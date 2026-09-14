@@ -53,6 +53,23 @@ function evaluateExpression(body, input) {
   throw new Error(`Unsupported expression: ${expr}`);
 }
 
+async function callModel(node, input) {
+  const response = await fetch('/api/model', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: node.title,
+      instruction: node.body || '',
+      input
+    })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error || 'MODEL FAILED');
+  if (typeof data?.output !== 'string' || !data.output.trim()) throw new Error('EMPTY MODEL OUTPUT');
+  return data.output.trim();
+}
+
 async function runWorkflow(workflow) {
   const startedAt = new Date().toISOString();
   const validation = validateWorkflow(workflow);
@@ -73,7 +90,7 @@ async function runWorkflow(workflow) {
     try {
       let output;
       if (node.kind === 'asset') output = node.value ?? node.body;
-      else if (node.operation === 'MODEL') throw new Error('Model provider not configured');
+      else if (node.operation === 'MODEL') output = await callModel(node, input);
       else if (node.kind === 'expression') output = node.expressionClass === 'DESCRIPTIVE' ? input : evaluateExpression(node.body, input);
       else if (node.kind === 'check') output = Boolean(input);
       else if (node.kind === 'instruction') output = `${node.body}${input == null ? '' : `\n${String(input)}`}`.trim();
