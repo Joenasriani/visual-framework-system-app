@@ -12,7 +12,7 @@ const seedEdges = [
   {id:'e3',fromNode:'expression-1',fromPort:'out',toNode:'output-1',toPort:'in'}
 ];
 
-const state = { nodes: structuredClone(seedNodes), edges: structuredClone(seedEdges), selected:'instruction-1', run:null, scale:1, wire:null, drag:null };
+const state = { nodes: structuredClone(seedNodes), edges: structuredClone(seedEdges), selected:'instruction-1', run:null, scale:1, wire:null, drag:null, pan:null };
 const el = id => document.getElementById(id);
 const nodesEl = el('nodes'), edgesEl = el('edges'), world = el('world'), stage = el('stage'), inspector = el('inspector');
 
@@ -61,21 +61,27 @@ function renderNodes() {
   const stepMap = new Map((state.run?.steps||[]).map(s=>[s.nodeId,s]));
   nodesEl.innerHTML = state.nodes.map(n=>{
     const step=stepMap.get(n.id), sel=state.selected===n.id?' selected':'', runClass=step?` run-${step.status}`:'';
-    const ins=n.inputs.map((p,i)=>`<button data-port="in" data-node="${n.id}" data-port-id="${p.id}" class="port port-in" style="top:${54+i*22}px" title="${p.name}: ${p.type}"><span>${p.type[0]}</span></button>`).join('');
-    const outs=n.outputs.map((p,i)=>`<button data-port="out" data-node="${n.id}" data-port-id="${p.id}" data-port-index="${i}" class="port port-out" style="top:${54+i*22}px" title="${p.name}: ${p.type}"><span>${p.type[0]}</span></button>`).join('');
+    const ins=n.inputs.map((p,i)=>`<button data-port="in" data-node="${n.id}" data-port-id="${p.id}" class="port port-in" style="top:${54+i*22}px" title="${p.name}: ${p.type}" aria-label="Input ${p.name}"><span>${p.type[0]}</span></button>`).join('');
+    const outs=n.outputs.map((p,i)=>`<button data-port="out" data-node="${n.id}" data-port-id="${p.id}" data-port-index="${i}" class="port port-out" style="top:${54+i*22}px" title="${p.name}: ${p.type}" aria-label="Output ${p.name}"><span>${p.type[0]}</span></button>`).join('');
     return `<div class="frame frame-${n.kind}${sel}${runClass}" data-frame="${n.id}" style="left:${n.x}px;top:${n.y}px;width:${W}px;height:${H}px">
       <div class="frame-index">${KIND_LABELS[n.kind] || n.kind.toUpperCase()}</div><div class="frame-title">${escapeHTML(n.title)}</div>
       <div class="frame-body">${escapeHTML(n.kind==='asset'?short(n.value):(n.body||'—'))}</div>
       <div class="frame-meta"><span>${n.operation==='MODEL'?'ONLINE':'LOCAL'}</span><span>${step?step.durationMs+'ms':(n.outputs[0]?.type||'result')}</span></div>${ins}${outs}</div>`;
   }).join('');
 }
-function curve(a,b) { const bend=Math.max(44,Math.abs(b.x-a.x)*.42); return `M ${a.x} ${a.y} C ${a.x+bend} ${a.y}, ${b.x-bend} ${b.y}, ${b.x} ${b.y}`; }
+function curve(a,b) {
+  const dx=b.x-a.x, dy=b.y-a.y;
+  const dir=dx>=0?1:-1;
+  const bend=Math.max(66,Math.min(280,Math.abs(dx)*.46+Math.abs(dy)*.13));
+  return `M ${a.x} ${a.y} C ${a.x+dir*bend} ${a.y}, ${b.x-dir*bend} ${b.y}, ${b.x} ${b.y}`;
+}
 function renderEdges() {
   const paths = state.edges.map(e=>{
     const a=node(e.fromNode), b=node(e.toNode); if(!a||!b)return '';
     const ai=Math.max(0,a.outputs.findIndex(p=>p.id===e.fromPort)), bi=Math.max(0,b.inputs.findIndex(p=>p.id===e.toPort));
-    return `<path d="${curve(portCenter(a,'out',ai),portCenter(b,'in',bi))}"></path>`;
+    const d=curve(portCenter(a,'out',ai),portCenter(b,'in',bi));
+    return `<g class="cable-group"><path class="cable-halo" d="${d}"></path><path class="cable-main" d="${d}"></path><path class="cable-signal" d="${d}"></path></g>`;
   }).join('');
-  const live=state.wire?`<path class="wire-live" d="${curve({x:state.wire.x1,y:state.wire.y1},{x:state.wire.x2,y:state.wire.y2})}"></path>`:'';
+  const live=state.wire?(()=>{const d=curve({x:state.wire.x1,y:state.wire.y1},{x:state.wire.x2,y:state.wire.y2});return `<path class="wire-live" d="${d}"></path><circle class="wire-tip" cx="${state.wire.x2}" cy="${state.wire.y2}" r="5"></circle>`;})():'';
   edgesEl.innerHTML=paths+live;
 }
