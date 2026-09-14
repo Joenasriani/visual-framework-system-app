@@ -22,7 +22,7 @@ const seedEdges = [
   {id:'e3',fromNode:'expression-1',fromPort:'out',toNode:'output-1',toPort:'in'}
 ];
 
-const state = { nodes: structuredClone(seedNodes), edges: structuredClone(seedEdges), selected:'instruction-1', run:null, scale:1, wire:null, drag:null, pan:null };
+const state = { nodes: structuredClone(seedNodes), edges: structuredClone(seedEdges), selected:'instruction-1', selectedEdge:null, run:null, scale:1, wire:null, drag:null, pan:null, cableMotion:null, edgeFlash:null };
 const el = id => document.getElementById(id);
 const nodesEl = el('nodes'), edgesEl = el('edges'), world = el('world'), stage = el('stage'), inspector = el('inspector');
 
@@ -49,12 +49,12 @@ function makeNode(kind) {
   return {id,kind,title:'Result',operation:'DETERMINISTIC',x,y,inputs:[{id:'in',name:'input',type:'any'}],outputs:[],body:''};
 }
 
-function addNode(kind) { const n=makeNode(kind); state.nodes.push(n); state.selected=n.id; state.run=null; save(); render(); }
+function addNode(kind) { const n=makeNode(kind); state.nodes.push(n); state.selected=n.id; state.selectedEdge=null; state.run=null; save(); render(); }
 function removeSelected() {
   if (!state.selected) return;
   state.nodes = state.nodes.filter(n=>n.id!==state.selected);
   state.edges = state.edges.filter(e=>e.fromNode!==state.selected && e.toNode!==state.selected);
-  state.selected=''; state.run=null; save(); render();
+  state.selected=''; state.selectedEdge=null; state.run=null; save(); render();
 }
 function updateSelected(patch) { const n=node(state.selected); if (!n) return; Object.assign(n,patch); state.run=null; save(); renderNodes(); renderEdges(); renderInspector(); }
 
@@ -84,18 +84,38 @@ function renderNodes() {
       <div class="frame-meta"><span>${n.operation==='MODEL'?'ONLINE':'LOCAL'}</span><span>${metaText}</span></div>${ins}${outs}</div>`;
   }).join('');
 }
-function curve(a,b) {
+function curveGeometry(a,b,fromFlex={x:0,y:0},toFlex={x:0,y:0}) {
   const dx=b.x-a.x, dy=b.y-a.y;
   const dir=dx>=0?1:-1;
   const bend=Math.max(66,Math.min(280,Math.abs(dx)*.46+Math.abs(dy)*.13));
-  return `M ${a.x} ${a.y} C ${a.x+dir*bend} ${a.y}, ${b.x-dir*bend} ${b.y}, ${b.x} ${b.y}`;
+  const c1={x:a.x+dir*bend+fromFlex.x,y:a.y+fromFlex.y};
+  const c2={x:b.x-dir*bend+toFlex.x,y:b.y+toFlex.y};
+  const mid={
+    x:.125*a.x+.375*c1.x+.375*c2.x+.125*b.x,
+    y:.125*a.y+.375*c1.y+.375*c2.y+.125*b.y
+  };
+  return {d:`M ${a.x} ${a.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${b.x} ${b.y}`,mid};
 }
+function curve(a,b) { return curveGeometry(a,b).d; }
 function renderEdges() {
   const paths = state.edges.map(e=>{
     const a=node(e.fromNode), b=node(e.toNode); if(!a||!b)return '';
     const ai=Math.max(0,a.outputs.findIndex(p=>p.id===e.fromPort)), bi=Math.max(0,b.inputs.findIndex(p=>p.id===e.toPort));
-    const d=curve(portCenter(a,'out',ai),portCenter(b,'in',bi));
-    return `<g class="cable-group"><path class="cable-halo" d="${d}"></path><path class="cable-main" d="${d}"></path><path class="cable-signal" d="${d}"></path></g>`;
+    const motion=state.cableMotion;
+    const fromFlex=motion?.nodeId===a.id?{x:motion.x,y:motion.y}:{x:0,y:0};
+    const toFlex=motion?.nodeId===b.id?{x:motion.x,y:motion.y}:{x:0,y:0};
+    const g=curveGeometry(portCenter(a,'out',ai),portCenter(b,'in',bi),fromFlex,toFlex);
+    const selected=state.selectedEdge===e.id;
+    const executing=state.run?.activeNodeId===e.fromNode||state.run?.activeNodeId===e.toNode;
+    const flash=state.edgeFlash===e.id;
+    const stroke=selected?'#5b67e8':'#a9abb5';
+    const width=selected?2.35:1.55;
+    const remove=selected?`<g data-remove-edge="${e.id}" style="pointer-events:all;cursor:pointer" transform="translate(${g.mid.x} ${g.mid.y})"><circle r="10" style="fill:#ffffff;stroke:#5b67e8;stroke-width:1.2;filter:drop-shadow(0 2px 4px rgba(35,38,52,.16))"></circle><path d="M -3 -3 L 3 3 M 3 -3 L -3 3" style="stroke:#5b67e8;stroke-width:1.4;stroke-linecap:round;pointer-events:none"></path></g>`:'';
+    return `<g class="cable-group${selected?' selected':''}${executing?' executing':''}${flash?' just-connected':''}" data-edge="${e.id}">
+      <path data-edge-hit="${e.id}" d="${g.d}" style="fill:none;stroke:transparent;stroke-width:16;pointer-events:stroke;cursor:pointer;vector-effect:non-scaling-stroke"></path>
+      <path class="cable-halo" pathLength="1" d="${g.d}" style="fill:none;stroke:${selected?'rgba(91,103,232,.16)':'rgba(169,171,181,.14)'};stroke-width:${selected?7:5};pointer-events:none;vector-effect:non-scaling-stroke"></path>
+      <path class="cable-main" pathLength="1" d="${g.d}" style="fill:none;stroke:${stroke};stroke-width:${width};stroke-linecap:round;pointer-events:none;vector-effect:non-scaling-stroke"></path>
+      ${executing?`<path class="cable-signal" pathLength="1" d="${g.d}" style="fill:none;stroke:#5b67e8;stroke-width:2.2;stroke-linecap:round;stroke-dasharray:.08 .92;pointer-events:none;vector-effect:non-scaling-stroke"></path>`:''}${remove}</g>`;
   }).join('');
   const live=state.wire?(()=>{const d=curve({x:state.wire.x1,y:state.wire.y1},{x:state.wire.x2,y:state.wire.y2});return `<path class="wire-live" d="${d}"></path><circle class="wire-tip" cx="${state.wire.x2}" cy="${state.wire.y2}" r="5"></circle>`;})():'';
   edgesEl.innerHTML=paths+live;
