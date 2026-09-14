@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#f3f0e8" />
+  <meta name="description" content="Compose, run, inspect and refine typed AI workflows." />
+  <title>Visual Framework</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand" aria-label="Visual Framework">
+        <span class="brand-mark">VF</span><span class="brand-name">FRAME / 01</span>
+      </div>
+      <div class="top-actions">
+        <span id="status" class="status"><i></i><b>READY</b></span>
+        <button id="reset" class="text-btn hide-mobile">Reset</button>
+        <button id="run" class="run-btn"><span>Run</span><kbd>⌘R</kbd></button>
+      </div>
+    </header>
+
+    <aside class="tool-rail" aria-label="Add frame">
+      <div class="tool-caption">ADD</div>
+      <button class="tool" data-add="asset"><span class="tool-glyph">◆</span><span class="tool-label">DATA</span><span class="tool-key">1</span></button>
+      <button class="tool" data-add="instruction"><span class="tool-glyph">→</span><span class="tool-label">STEP</span><span class="tool-key">2</span></button>
+      <button class="tool" data-add="expression"><span class="tool-glyph">ƒ</span><span class="tool-label">MATH</span><span class="tool-key">3</span></button>
+      <button class="tool" data-add="check"><span class="tool-glyph">✓</span><span class="tool-label">TEST</span><span class="tool-key">4</span></button>
+      <button class="tool" data-add="output"><span class="tool-glyph">□</span><span class="tool-label">OUT</span><span class="tool-key">5</span></button>
+    </aside>
+
+    <section class="workspace">
+      <div class="workspace-head">
+        <div><strong>Reference flow</strong><span id="count"></span></div>
+        <div class="zoom"><button id="zoom-out">−</button><span id="zoom-label">100%</span><button id="zoom-in">+</button></div>
+      </div>
+      <div id="stage" class="stage">
+        <div id="world" class="world">
+          <svg id="edges" class="edges" aria-hidden="true"></svg>
+          <div id="nodes"></div>
+        </div>
+      </div>
+    </section>
+
+    <aside id="inspector" class="inspector"></aside>
+    <div id="run-strip" class="run-strip" hidden></div>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
