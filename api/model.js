@@ -53,11 +53,11 @@ export default async function handler(req, res) {
         messages: [
           {
             role: 'system',
-            content: 'You are the reasoning engine inside Visual Framework. Execute exactly one framework node. Work only from the provided input and the node instruction. Prefer structural clarity over prose. Do not narrate your process. Do not mention being an AI. Do not reveal chain-of-thought. Return only the node result. Keep it concise unless the instruction requires detail.'
+            content: 'Execute exactly one Frame in Visual Framework. The Frame order is authoritative. Work only from the supplied input and order. Preserve structural distinctions, alternatives, contradictions, and uncertainty when the order requires them. Do not invent certainty. Do not narrate hidden reasoning. Return only the Frame result in the structure requested by the order.'
           },
           {
             role: 'user',
-            content: `FRAME: ${textOf(title) || 'Untitled'}\n\nINSTRUCTION:\n${instruction.trim()}\n\nINPUT:\n${inputText || '(none)'}`
+            content: `FRAME: ${textOf(title) || 'Untitled'}\n\nORDER:\n${instruction.trim()}\n\nINPUT:\n${inputText || '(none)'}`
           }
         ],
         reasoning: { effort: 'medium' },
