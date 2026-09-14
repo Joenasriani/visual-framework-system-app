@@ -35,7 +35,7 @@ function load() {
 function save() { localStorage.setItem('visual-framework-workflow-v1', JSON.stringify({nodes:state.nodes, edges:state.edges})); }
 function node(id) { return state.nodes.find(n => n.id === id); }
 function short(v) { if (v === undefined) return '—'; const t = typeof v === 'string' ? v : JSON.stringify(v); return t.length > 70 ? t.slice(0,67)+'…' : t; }
-function escapeHTML(s='') { return String(s).replace(/[&<>'\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[c])); }
+function escapeHTML(s='') { return String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 function portCenter(n, side, index=0) { return { x: side==='out' ? n.x+W : n.x, y:n.y+58+index*22 }; }
 
 function makeNode(kind) {
@@ -70,13 +70,18 @@ function renderMeta() {
 function renderNodes() {
   const stepMap = new Map((state.run?.steps||[]).map(s=>[s.nodeId,s]));
   nodesEl.innerHTML = state.nodes.map(n=>{
-    const step=stepMap.get(n.id), sel=state.selected===n.id?' selected':'', runClass=step?` run-${step.status}`:'';
+    const step=stepMap.get(n.id);
+    const active=state.run?.activeNodeId===n.id;
+    const sel=state.selected===n.id?' selected':'';
+    const runClass=active?' run-active':step?` run-${step.status}`:'';
     const ins=n.inputs.map((p,i)=>`<button data-port="in" data-node="${n.id}" data-port-id="${p.id}" class="port port-in" style="top:${54+i*22}px" title="${p.name}: ${p.type}" aria-label="Input ${p.name}"><span>${p.type[0]}</span></button>`).join('');
     const outs=n.outputs.map((p,i)=>`<button data-port="out" data-node="${n.id}" data-port-id="${p.id}" data-port-index="${i}" class="port port-out" style="top:${54+i*22}px" title="${p.name}: ${p.type}" aria-label="Output ${p.name}"><span>${p.type[0]}</span></button>`).join('');
+    const bodyText=active?'Running…':step?.status==='ok'?short(step.output):step?.status==='error'?'Execution stopped':n.kind==='asset'?short(n.value):(n.body||'—');
+    const metaText=active?'RUNNING':step?step.durationMs+'ms':(n.outputs[0]?.type||'result');
     return `<div class="frame frame-${n.kind}${sel}${runClass}" data-frame="${n.id}" style="left:${n.x}px;top:${n.y}px;width:${W}px;height:${H}px">
       <div class="frame-index">${KIND_LABELS[n.kind] || n.kind.toUpperCase()}</div><div class="frame-title">${escapeHTML(n.title)}</div>
-      <div class="frame-body">${escapeHTML(n.kind==='asset'?short(n.value):(n.body||'—'))}</div>
-      <div class="frame-meta"><span>${n.operation==='MODEL'?'ONLINE':'LOCAL'}</span><span>${step?step.durationMs+'ms':(n.outputs[0]?.type||'result')}</span></div>${ins}${outs}</div>`;
+      <div class="frame-body">${escapeHTML(bodyText)}</div>
+      <div class="frame-meta"><span>${n.operation==='MODEL'?'ONLINE':'LOCAL'}</span><span>${metaText}</span></div>${ins}${outs}</div>`;
   }).join('');
 }
 function curve(a,b) {
