@@ -1,32 +1,39 @@
-# Visual Framework App
+# Visual Framework
 
-Visual Framework is a system for making structured thought visible, inspectable, executable, challengeable, reframable, and reusable.
+Visual Framework makes structured thought visible, executable, inspectable, challengeable and reusable.
 
-A Frame may hold information, an explicit order, or both. An executable Frame can run independently when its required input is available. In a Framework Run, completed Frame outputs become available to downstream Frames so the chain resolves visibly Frame by Frame.
+A Frame can hold information, an explicit Order or both. A Frame can execute independently when its required input exists. During a Framework Run, completed outputs become available to dependent Frames and the chain resolves visibly Frame by Frame.
 
-## Current product phase
+## Architecture
 
-Desktop is the only canonical interface.
+The project baseline is locked to:
 
-Do not introduce a separate mobile interaction model until the desktop experience is finished and accepted. The later mobile version should be adapted from the completed desktop product with a reduced feature set.
+1. GitHub
+2. React 19.3
+3. TypeScript 7.0
+4. Vite 8.3
+5. Vercel
+6. Local first IndexedDB
+7. PWA
+8. Cloud services only when justified by a real requirement
+9. Python as an optional later analysis or backend layer
+10. Android as a later packaging decision, never a separate codebase by default
 
-## MVP foundation
+See `ARCHITECTURE.md` for the permanent boundaries.
 
-1. Typed Frames and ports
-2. Direct visual relationships
-3. Reusable data assets
-4. Deterministic operations
-5. Online model operations
-6. Graph validation and cycle rejection
-7. Execution trace per Frame
-8. Local persistence
-9. Desktop canvas with direct manipulation
-10. Independent Frame execution as a target capability
-11. Progressive Framework execution as a target capability
+## Domain core
 
-## MVP reasoning operations
+The application is organized so the Visual Framework model does not depend on React.
 
-The first reusable reasoning operations are:
+1. `src/domain/types.ts` defines the typed product model
+2. `src/domain/engine.ts` validates and executes Frameworks and individual Frames
+3. `src/domain/orders.ts` contains the current reusable reasoning Orders
+4. `src/domain/seed.ts` defines the initial Framework
+5. `src/storage/indexeddb.ts` stores Frameworks and Runs locally
+6. `src/App.tsx` renders and manipulates the domain model
+7. `api/model.js` performs protected online model execution
+
+## Current MVP reasoning Orders
 
 1. Decompose
 2. Move Up
@@ -36,80 +43,33 @@ The first reusable reasoning operations are:
 6. Find Missing Structure
 7. Validate Structure
 
-These operations were selected because they directly serve recursive structural reasoning and remain compatible with the current simple Frame runtime.
+See `FRAMEWORK_TASKS.md` for the mission filtered future register.
 
-See `FRAMEWORK_TASKS.md` for the complete mission filtered task register.
+## Local data migration
 
-## Interaction motion contract
+The React application automatically imports the previous `visual-framework-workflow-v1` localStorage structure into IndexedDB the first time it runs, then removes the legacy localStorage record.
 
-Motion must make Frame and relationship manipulation easier to read and feel, without changing structural precision.
+## Development
 
-1. Follow Through
+```bash
+npm install
+npm run dev
+```
 
-When a Frame stops moving, its stored position is already final. Connected cable endpoints remain exactly attached to their ports. Only the cable body may continue moving briefly before settling.
+Type check:
 
-2. Overlapping Action
+```bash
+npm run typecheck
+```
 
-The Frame, cable body, halo, and port response do not all stop at the same instant. Their timing is staggered slightly so the interaction has continuity while remaining restrained.
+Production build:
 
-3. Ease In
-
-Residual cable movement loses energy smoothly before reaching rest. No abrupt stop should occur after a meaningful drag gesture.
-
-4. Settling Bounce
-
-The Frame may use a very small scale and depth overshoot when released. Positional bounce is not allowed because it would reduce placement precision. Cable curvature may cross neutral slightly before damping to rest.
-
-5. Connection Creation
-
-A new cable visually resolves into place, followed by a quieter halo response and a brief target port acknowledgement.
-
-6. Connection Removal
-
-A selected relationship exposes one temporary remove control. Removing it retracts the cable before the relationship disappears from the Framework.
-
-7. Motion Meaning
-
-Do not animate cables continuously for decoration. Motion must correspond to manipulation, connection, removal, execution, state change, or another real Framework event.
-
-8. Reduced Motion
-
-Respect the user's reduced motion preference. Structural behavior must remain fully usable without follow through or settling effects.
+```bash
+npm run build
+```
 
 ## Online model
 
-The app is locked to one model:
+The current online Frame executor reads `FW_API` only inside `api/model.js`.
 
-`nvidia/nemotron-3-ultra-550b-a55b:free`
-
-No paid fallback model is configured.
-
-### Vercel variable
-
-Add this environment variable in Vercel:
-
-`FW_API=your_openrouter_api_key`
-
-Add it to Production and Preview, then redeploy.
-
-The key is read only inside `api/model.js`. It is never sent to the browser.
-
-Free endpoints are rate limited and may log prompts. Do not send confidential or personal data through the free model endpoint.
-
-## Run locally
-
-Static and local operations work with:
-
-```bash
-python3 -m http.server 4173
-```
-
-Online model Frames require a Vercel compatible serverless environment with `FW_API` configured.
-
-## Expression operators
-
-1. `notEmpty(input)`
-2. `length(input)`
-3. `uppercase(input)`
-4. `lowercase(input)`
-5. `json(input)`
+No paid fallback is configured.
