@@ -8,6 +8,7 @@ on:
       - 'e2e/live.mjs'
       - '.github/workflows/live-mvp.yml'
 
+# Acceptance run 2: production multi selection drag fix
 jobs:
   live:
     runs-on: ubuntu-latest
