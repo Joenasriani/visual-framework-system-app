@@ -1,8 +1,9 @@
 const W = 216, H = 112;
+const KIND_LABELS = { asset:'DATA', instruction:'STEP', expression:'LOGIC', check:'CHECK', output:'RESULT' };
 const seedNodes = [
   { id:'asset-1', kind:'asset', title:'Source', operation:'DETERMINISTIC', x:120, y:190, inputs:[], outputs:[{id:'out',name:'text',type:'text'}], body:'Reusable source', value:'A useful system makes its assumptions inspectable.' },
-  { id:'instruction-1', kind:'instruction', title:'Frame', operation:'MODEL', x:420, y:190, inputs:[{id:'in',name:'input',type:'text'}], outputs:[{id:'out',name:'text',type:'text'}], body:'State the claim:' },
-  { id:'expression-1', kind:'expression', title:'Check', operation:'DETERMINISTIC', expressionClass:'EXECUTABLE', x:720, y:190, inputs:[{id:'in',name:'input',type:'text'}], outputs:[{id:'out',name:'valid',type:'boolean'}], body:'notEmpty(input)' },
+  { id:'instruction-1', kind:'instruction', title:'Step', operation:'MODEL', x:420, y:190, inputs:[{id:'in',name:'input',type:'text'}], outputs:[{id:'out',name:'text',type:'text'}], body:'State the claim:' },
+  { id:'expression-1', kind:'expression', title:'Logic', operation:'DETERMINISTIC', expressionClass:'EXECUTABLE', x:720, y:190, inputs:[{id:'in',name:'input',type:'text'}], outputs:[{id:'out',name:'valid',type:'boolean'}], body:'notEmpty(input)' },
   { id:'output-1', kind:'output', title:'Result', operation:'DETERMINISTIC', x:1020, y:190, inputs:[{id:'in',name:'input',type:'boolean'}], outputs:[], body:'' }
 ];
 const seedEdges = [
@@ -33,8 +34,8 @@ function makeNode(kind) {
   const y = Math.max(48, stage.scrollTop/state.scale + stage.clientHeight/(2*state.scale)-H/2) + Math.random()*26;
   if (kind==='asset') return {id,kind,title:'Source',operation:'DETERMINISTIC',x,y,inputs:[],outputs:[{id:'out',name:'text',type:'text'}],body:'Reusable source',value:'New source'};
   if (kind==='instruction') return {id,kind,title:'Step',operation:'MODEL',x,y,inputs:[{id:'in',name:'input',type:'text'}],outputs:[{id:'out',name:'text',type:'text'}],body:'Transform:'};
-  if (kind==='expression') return {id,kind,title:'Expression',operation:'DETERMINISTIC',expressionClass:'EXECUTABLE',x,y,inputs:[{id:'in',name:'input',type:'text'}],outputs:[{id:'out',name:'value',type:'boolean'}],body:'notEmpty(input)'};
-  if (kind==='check') return {id,kind,title:'Test',operation:'DETERMINISTIC',x,y,inputs:[{id:'in',name:'input',type:'any'}],outputs:[{id:'out',name:'valid',type:'boolean'}],body:'Pass if truthy'};
+  if (kind==='expression') return {id,kind,title:'Logic',operation:'DETERMINISTIC',expressionClass:'EXECUTABLE',x,y,inputs:[{id:'in',name:'input',type:'text'}],outputs:[{id:'out',name:'value',type:'boolean'}],body:'notEmpty(input)'};
+  if (kind==='check') return {id,kind,title:'Check',operation:'DETERMINISTIC',x,y,inputs:[{id:'in',name:'input',type:'any'}],outputs:[{id:'out',name:'valid',type:'boolean'}],body:'Pass if truthy'};
   return {id,kind,title:'Result',operation:'DETERMINISTIC',x,y,inputs:[{id:'in',name:'input',type:'any'}],outputs:[],body:''};
 }
 
@@ -63,9 +64,9 @@ function renderNodes() {
     const ins=n.inputs.map((p,i)=>`<button data-port="in" data-node="${n.id}" data-port-id="${p.id}" class="port port-in" style="top:${54+i*22}px" title="${p.name}: ${p.type}"><span>${p.type[0]}</span></button>`).join('');
     const outs=n.outputs.map((p,i)=>`<button data-port="out" data-node="${n.id}" data-port-id="${p.id}" data-port-index="${i}" class="port port-out" style="top:${54+i*22}px" title="${p.name}: ${p.type}"><span>${p.type[0]}</span></button>`).join('');
     return `<div class="frame frame-${n.kind}${sel}${runClass}" data-frame="${n.id}" style="left:${n.x}px;top:${n.y}px;width:${W}px;height:${H}px">
-      <div class="frame-index">${n.kind.slice(0,3).toUpperCase()}</div><div class="frame-title">${escapeHTML(n.title)}</div>
+      <div class="frame-index">${KIND_LABELS[n.kind] || n.kind.toUpperCase()}</div><div class="frame-title">${escapeHTML(n.title)}</div>
       <div class="frame-body">${escapeHTML(n.kind==='asset'?short(n.value):(n.body||'—'))}</div>
-      <div class="frame-meta"><span>${n.operation==='MODEL'?'ONLINE':'LOCAL'}</span><span>${step?step.durationMs+'ms':(n.outputs[0]?.type||'sink')}</span></div>${ins}${outs}</div>`;
+      <div class="frame-meta"><span>${n.operation==='MODEL'?'ONLINE':'LOCAL'}</span><span>${step?step.durationMs+'ms':(n.outputs[0]?.type||'result')}</span></div>${ins}${outs}</div>`;
   }).join('');
 }
 function curve(a,b) { const bend=Math.max(44,Math.abs(b.x-a.x)*.42); return `M ${a.x} ${a.y} C ${a.x+bend} ${a.y}, ${b.x-bend} ${b.y}, ${b.x} ${b.y}`; }
