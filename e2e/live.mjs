@@ -42,6 +42,20 @@ async function injectProposal(proposal) {
   }, proposal);
 }
 
+async function storedFrameworkCount() {
+  return page.evaluate(async () => new Promise((resolve, reject) => {
+    const request = indexedDB.open('visual-framework', 2);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const tx = db.transaction('frameworks', 'readonly');
+      const countRequest = tx.objectStore('frameworks').count();
+      countRequest.onerror = () => reject(countRequest.error);
+      countRequest.onsuccess = () => resolve(countRequest.result);
+    };
+  }));
+}
+
 try {
   await page.goto(URL, { waitUntil: 'networkidle', timeout: 60000 });
   await page.getByText('Visual Framework', { exact: true }).first().waitFor();
@@ -175,7 +189,8 @@ try {
   await page.getByRole('button', { name: 'Review Proposal' }).click();
   await page.getByRole('button', { name: 'Create Framework' }).click();
   await page.getByText('Compressed Core', { exact: true }).waitFor();
-  assert(await page.locator('.framework-switch option').count() >= 2, 'Compressed Framework was not preserved separately');
+  await page.locator('.framework-switch option').nth(1).waitFor();
+  assert(await storedFrameworkCount() >= 2, 'Compressed Framework was not persisted separately');
   await page.locator('.framework-switch').selectOption('framework-main');
   await page.getByText('Source', { exact: true }).waitFor();
 
