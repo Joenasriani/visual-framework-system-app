@@ -419,7 +419,6 @@ export default function App() {
     const additive = event.shiftKey || event.metaKey || event.ctrlKey;
     let selection = selectedFrameIds;
     if (!selection.includes(frame.id)) selection = additive ? [...selection, frame.id] : [frame.id];
-    else if (!additive && selection.length > 1) selection = [frame.id];
     setSelectedFrameIds(selection);
     setSelectedConnectionId(null);
     setSideMode('frame');
