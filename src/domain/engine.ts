@@ -3,13 +3,17 @@ import type { Connection, Frame, FrameworkDocument, FrameworkRun, RunEvent, RunS
 export const compatible = (outType: ValueType, inType: ValueType) =>
   outType === inType || outType === 'any' || inType === 'any';
 
+const executionConnections = (framework: FrameworkDocument) =>
+  framework.connections.filter(connection => !connection.kind || connection.kind === 'execution' || connection.kind === 'both');
+
 function frameById(framework: FrameworkDocument, id: string) {
   return framework.frames.find(frame => frame.id === id);
 }
 
 export function validateFramework(framework: FrameworkDocument): string[] {
   const errors: string[] = [];
-  for (const connection of framework.connections) {
+  const connections = executionConnections(framework);
+  for (const connection of connections) {
     const from = frameById(framework, connection.fromFrame);
     const to = frameById(framework, connection.toFrame);
     if (!from || !to) {
@@ -29,7 +33,7 @@ export function validateFramework(framework: FrameworkDocument): string[] {
 
   for (const frame of framework.frames) {
     for (const input of frame.inputs) {
-      const incoming = framework.connections.some(connection => connection.toFrame === frame.id && connection.toPort === input.id);
+      const incoming = connections.some(connection => connection.toFrame === frame.id && connection.toPort === input.id);
       if (!incoming && frame.kind !== 'asset') errors.push(`${frame.title}: ${input.name} is not connected`);
     }
   }
@@ -37,10 +41,11 @@ export function validateFramework(framework: FrameworkDocument): string[] {
 }
 
 function topologicalOrder(framework: FrameworkDocument): Frame[] {
+  const connections = executionConnections(framework);
   const indegree = new Map(framework.frames.map(frame => [frame.id, 0]));
   const next = new Map<string, string[]>();
 
-  for (const connection of framework.connections) {
+  for (const connection of connections) {
     indegree.set(connection.toFrame, (indegree.get(connection.toFrame) ?? 0) + 1);
     next.set(connection.fromFrame, [...(next.get(connection.fromFrame) ?? []), connection.toFrame]);
   }
@@ -103,6 +108,15 @@ function runId() {
   return `run-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 }
 
+function stepProvenance(runIdValue: string, frame: Frame) {
+  return {
+    origin: frame.operation === 'MODEL' ? 'model' as const : 'deterministic' as const,
+    createdAt: new Date().toISOString(),
+    runId: runIdValue,
+    frameId: frame.id
+  };
+}
+
 export async function runFramework(
   framework: FrameworkDocument,
   onEvent?: (event: RunEvent) => void
@@ -117,7 +131,7 @@ export async function runFramework(
     run.status = 'error';
     run.endedAt = new Date().toISOString();
     run.steps = validation.map((error, index) => ({
-      frameId: `validation-${index}`, status: 'error', input: null, error, durationMs: 0
+      frameId: `validation-${index}`, status: 'error', input: null, error, durationMs: 0, executor: 'DETERMINISTIC'
     }));
     onEvent?.({ type: 'run-completed', run: { ...run } });
     return run;
@@ -129,14 +143,15 @@ export async function runFramework(
   } catch (error) {
     run.status = 'error';
     run.endedAt = new Date().toISOString();
-    run.steps = [{ frameId: 'graph', status: 'error', input: null, error: error instanceof Error ? error.message : 'Cycle detected', durationMs: 0 }];
+    run.steps = [{ frameId: 'graph', status: 'error', input: null, error: error instanceof Error ? error.message : 'Cycle detected', durationMs: 0, executor: 'DETERMINISTIC' }];
     onEvent?.({ type: 'run-completed', run: { ...run } });
     return run;
   }
 
   const outputs = new Map<string, unknown>();
+  const connections = executionConnections(framework);
   for (const frame of ordered) {
-    const input = gatheredInput(framework.connections, outputs, frame.id);
+    const input = gatheredInput(connections, outputs, frame.id);
     run.activeFrameId = frame.id;
     onEvent?.({ type: 'frame-started', frameId: frame.id, run: { ...run, steps: [...run.steps] } });
     const started = performance.now();
@@ -144,16 +159,26 @@ export async function runFramework(
       const output = await executeFrameOperation(frame, input);
       outputs.set(frame.id, output);
       const step: RunStep = {
-        frameId: frame.id, status: 'ok', input, output, durationMs: +(performance.now() - started).toFixed(2)
+        frameId: frame.id,
+        status: 'ok',
+        input,
+        output,
+        durationMs: +(performance.now() - started).toFixed(2),
+        executor: frame.operation,
+        provenance: stepProvenance(run.id, frame)
       };
       run.steps = [...run.steps, step];
       run.activeFrameId = null;
       onEvent?.({ type: 'frame-completed', frameId: frame.id, run: { ...run, steps: [...run.steps] } });
     } catch (error) {
       const step: RunStep = {
-        frameId: frame.id, status: 'error', input,
+        frameId: frame.id,
+        status: 'error',
+        input,
         error: error instanceof Error ? error.message : 'Execution failed',
-        durationMs: +(performance.now() - started).toFixed(2)
+        durationMs: +(performance.now() - started).toFixed(2),
+        executor: frame.operation,
+        provenance: stepProvenance(run.id, frame)
       };
       run.steps = [...run.steps, step];
       run.activeFrameId = null;
@@ -182,10 +207,10 @@ export async function runSingleFrame(
     id: runId(), frameworkId: framework.id, status: 'running', startedAt, activeFrameId: frameId, steps: []
   };
   if (!frame) {
-    return { ...run, status: 'error', endedAt: new Date().toISOString(), activeFrameId: null, steps: [{ frameId, status: 'error', input: null, error: 'Frame not found', durationMs: 0 }] };
+    return { ...run, status: 'error', endedAt: new Date().toISOString(), activeFrameId: null, steps: [{ frameId, status: 'error', input: null, error: 'Frame not found', durationMs: 0, executor: 'DETERMINISTIC' }] };
   }
 
-  const incoming = framework.connections.filter(connection => connection.toFrame === frameId);
+  const incoming = executionConnections(framework).filter(connection => connection.toFrame === frameId);
   const prior = new Map((previousRun?.steps ?? []).filter(step => step.status === 'ok').map(step => [step.frameId, step.output]));
   for (const connection of incoming) {
     if (prior.has(connection.fromFrame)) continue;
@@ -194,7 +219,7 @@ export async function runSingleFrame(
   }
   const input = gatheredInput(incoming, prior, frameId);
   if (frame.inputs.length && incoming.length && input === undefined) {
-    return { ...run, status: 'error', endedAt: new Date().toISOString(), activeFrameId: null, steps: [{ frameId, status: 'error', input: null, error: 'Required upstream result is not available', durationMs: 0 }] };
+    return { ...run, status: 'error', endedAt: new Date().toISOString(), activeFrameId: null, steps: [{ frameId, status: 'error', input: null, error: 'Required upstream result is not available', durationMs: 0, executor: frame.operation }] };
   }
 
   const started = performance.now();
@@ -202,12 +227,12 @@ export async function runSingleFrame(
     const output = await executeFrameOperation(frame, input);
     return {
       ...run, status: 'ok', endedAt: new Date().toISOString(), activeFrameId: null,
-      steps: [{ frameId, status: 'ok', input, output, durationMs: +(performance.now() - started).toFixed(2) }]
+      steps: [{ frameId, status: 'ok', input, output, durationMs: +(performance.now() - started).toFixed(2), executor: frame.operation, provenance: stepProvenance(run.id, frame) }]
     };
   } catch (error) {
     return {
       ...run, status: 'error', endedAt: new Date().toISOString(), activeFrameId: null,
-      steps: [{ frameId, status: 'error', input, error: error instanceof Error ? error.message : 'Execution failed', durationMs: +(performance.now() - started).toFixed(2) }]
+      steps: [{ frameId, status: 'error', input, error: error instanceof Error ? error.message : 'Execution failed', durationMs: +(performance.now() - started).toFixed(2), executor: frame.operation, provenance: stepProvenance(run.id, frame) }]
     };
   }
 }
