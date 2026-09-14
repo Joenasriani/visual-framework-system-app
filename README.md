@@ -2,6 +2,11 @@
 
 A zero-dependency visual environment for composing, validating, executing, and inspecting typed computational workflows.
 
+## Current product phase
+Desktop is the only canonical interface.
+
+Do not introduce a separate mobile interaction model until the desktop UX is finished and accepted. The later mobile version should be adapted from the completed desktop product with a reduced feature set, not designed in parallel.
+
 ## MVP
 - Typed frames and ports
 - Direct visual linking
@@ -11,7 +16,7 @@ A zero-dependency visual environment for composing, validating, executing, and i
 - Graph validation and cycle rejection
 - Execution trace per frame
 - Local persistence
-- Desktop-first responsive UI
+- Desktop canvas with direct manipulation
 
 ## Online model
 The app is locked to one model:
