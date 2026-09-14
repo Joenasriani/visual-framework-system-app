@@ -125,7 +125,7 @@ try {
   await page.getByRole('button', { name: 'Run Frame', exact: true }).click();
   await page.getByText('PASSED', { exact: true }).waitFor({ timeout: 15000 });
 
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await page.locator('.run-button').click();
   await page.getByText('PASSED', { exact: true }).waitFor({ timeout: 20000 });
   await page.getByRole('button', { name: /Runs \d+/ }).click();
   await page.getByText('Runs', { exact: true }).last().waitFor();
