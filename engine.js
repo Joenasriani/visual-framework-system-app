@@ -70,37 +70,89 @@ async function callModel(node, input) {
   return data.output.trim();
 }
 
-async function runWorkflow(workflow) {
+async function executeNode(node, input) {
+  if (node.kind === 'asset') return node.value ?? node.body;
+  if (node.operation === 'MODEL') return await callModel(node, input);
+  if (node.kind === 'expression') return node.expressionClass === 'DESCRIPTIVE' ? input : evaluateExpression(node.body, input);
+  if (node.kind === 'check') return Boolean(input);
+  if (node.kind === 'instruction') return `${node.body}${input == null ? '' : `\n${String(input)}`}`.trim();
+  return input;
+}
+
+async function runFrame(workflow, nodeId, previousRun = null) {
+  const startedAt = new Date().toISOString();
+  const node = workflow.nodes.find(n => n.id === nodeId);
+  if (!node) return { status:'error', startedAt, endedAt:new Date().toISOString(), steps:[{nodeId,status:'error',input:null,error:'FRAME NOT FOUND',durationMs:0}] };
+
+  const previous = new Map((previousRun?.steps || []).filter(s => s.status === 'ok').map(s => [s.nodeId, s.output]));
+  const incoming = workflow.edges.filter(e => e.toNode === node.id);
+  const gathered = [];
+
+  for (const edge of incoming) {
+    const source = workflow.nodes.find(n => n.id === edge.fromNode);
+    if (!source) return { status:'error', startedAt, endedAt:new Date().toISOString(), steps:[{nodeId,status:'error',input:null,error:'SOURCE FRAME NOT FOUND',durationMs:0}] };
+    if (previous.has(source.id)) gathered.push(previous.get(source.id));
+    else if (source.kind === 'asset') gathered.push(source.value ?? source.body);
+    else return { status:'error', startedAt, endedAt:new Date().toISOString(), steps:[{nodeId,status:'error',input:null,error:`INPUT NOT AVAILABLE FROM ${source.title}`,durationMs:0}] };
+  }
+
+  if (node.inputs.length && incoming.length === 0 && node.kind !== 'asset') {
+    return { status:'error', startedAt, endedAt:new Date().toISOString(), steps:[{nodeId,status:'error',input:null,error:'INPUT NOT AVAILABLE',durationMs:0}] };
+  }
+
+  const input = gathered.length <= 1 ? gathered[0] : gathered;
+  const t0 = performance.now();
+  try {
+    const output = await executeNode(node, input);
+    const step = { nodeId:node.id, status:'ok', input, output, durationMs:+(performance.now()-t0).toFixed(2) };
+    return { status:'ok', startedAt, endedAt:new Date().toISOString(), steps:[step] };
+  } catch (error) {
+    const step = { nodeId:node.id, status:'error', input, error:error.message || 'Execution failed', durationMs:+(performance.now()-t0).toFixed(2) };
+    return { status:'error', startedAt, endedAt:new Date().toISOString(), steps:[step] };
+  }
+}
+
+async function runWorkflow(workflow, onEvent = null) {
   const startedAt = new Date().toISOString();
   const validation = validateWorkflow(workflow);
   if (validation.length) {
-    return { status: 'error', startedAt, endedAt: new Date().toISOString(), steps: validation.map((error, i) => ({ nodeId:`validation-${i}`, status:'error', input:null, error, durationMs:0 })) };
+    const run = { status: 'error', startedAt, endedAt: new Date().toISOString(), steps: validation.map((error, i) => ({ nodeId:`validation-${i}`, status:'error', input:null, error, durationMs:0 })) };
+    onEvent?.({ type:'framework-failed', run });
+    return run;
   }
+
   let ordered;
   try { ordered = topo(workflow.nodes, workflow.edges); }
-  catch (error) { return { status:'error', startedAt, endedAt:new Date().toISOString(), steps:[{nodeId:'graph',status:'error',input:null,error:error.message,durationMs:0}]}; }
+  catch (error) {
+    const run = { status:'error', startedAt, endedAt:new Date().toISOString(), steps:[{nodeId:'graph',status:'error',input:null,error:error.message,durationMs:0}] };
+    onEvent?.({ type:'framework-failed', run });
+    return run;
+  }
 
   const outputs = new Map();
   const steps = [];
   for (const node of ordered) {
-    const t0 = performance.now();
     const incoming = workflow.edges.filter(e => e.toNode === node.id);
     const gathered = incoming.map(e => outputs.get(e.fromNode));
     const input = gathered.length <= 1 ? gathered[0] : gathered;
+    onEvent?.({ type:'frame-started', nodeId:node.id, input, steps:[...steps] });
+    const t0 = performance.now();
     try {
-      let output;
-      if (node.kind === 'asset') output = node.value ?? node.body;
-      else if (node.operation === 'MODEL') output = await callModel(node, input);
-      else if (node.kind === 'expression') output = node.expressionClass === 'DESCRIPTIVE' ? input : evaluateExpression(node.body, input);
-      else if (node.kind === 'check') output = Boolean(input);
-      else if (node.kind === 'instruction') output = `${node.body}${input == null ? '' : `\n${String(input)}`}`.trim();
-      else output = input;
+      const output = await executeNode(node, input);
       outputs.set(node.id, output);
-      steps.push({ nodeId:node.id, status:'ok', input, output, durationMs:+(performance.now()-t0).toFixed(2) });
+      const step = { nodeId:node.id, status:'ok', input, output, durationMs:+(performance.now()-t0).toFixed(2) };
+      steps.push(step);
+      onEvent?.({ type:'frame-completed', nodeId:node.id, step, steps:[...steps] });
     } catch (error) {
-      steps.push({ nodeId:node.id, status:'error', input, error:error.message || 'Execution failed', durationMs:+(performance.now()-t0).toFixed(2) });
-      return { status:'error', startedAt, endedAt:new Date().toISOString(), steps };
+      const step = { nodeId:node.id, status:'error', input, error:error.message || 'Execution failed', durationMs:+(performance.now()-t0).toFixed(2) };
+      steps.push(step);
+      const run = { status:'error', startedAt, endedAt:new Date().toISOString(), steps };
+      onEvent?.({ type:'frame-failed', nodeId:node.id, step, run });
+      return run;
     }
   }
-  return { status:'ok', startedAt, endedAt:new Date().toISOString(), steps };
+
+  const run = { status:'ok', startedAt, endedAt:new Date().toISOString(), steps };
+  onEvent?.({ type:'framework-completed', run });
+  return run;
 }
