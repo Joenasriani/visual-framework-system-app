@@ -40,6 +40,42 @@ These operations were selected because they directly serve recursive structural 
 
 See `FRAMEWORK_TASKS.md` for the complete mission filtered task register.
 
+## Interaction motion contract
+
+Motion must make Frame and relationship manipulation easier to read and feel, without changing structural precision.
+
+1. Follow Through
+
+When a Frame stops moving, its stored position is already final. Connected cable endpoints remain exactly attached to their ports. Only the cable body may continue moving briefly before settling.
+
+2. Overlapping Action
+
+The Frame, cable body, halo, and port response do not all stop at the same instant. Their timing is staggered slightly so the interaction has continuity while remaining restrained.
+
+3. Ease In
+
+Residual cable movement loses energy smoothly before reaching rest. No abrupt stop should occur after a meaningful drag gesture.
+
+4. Settling Bounce
+
+The Frame may use a very small scale and depth overshoot when released. Positional bounce is not allowed because it would reduce placement precision. Cable curvature may cross neutral slightly before damping to rest.
+
+5. Connection Creation
+
+A new cable visually resolves into place, followed by a quieter halo response and a brief target port acknowledgement.
+
+6. Connection Removal
+
+A selected relationship exposes one temporary remove control. Removing it retracts the cable before the relationship disappears from the Framework.
+
+7. Motion Meaning
+
+Do not animate cables continuously for decoration. Motion must correspond to manipulation, connection, removal, execution, state change, or another real Framework event.
+
+8. Reduced Motion
+
+Respect the user's reduced motion preference. Structural behavior must remain fully usable without follow through or settling effects.
+
 ## Online model
 
 The app is locked to one model:
