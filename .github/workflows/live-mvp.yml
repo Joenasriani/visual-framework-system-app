@@ -6,7 +6,7 @@ on:
     branches: [main]
     paths:
       - 'e2e/live.mjs'
-      - 'e2e/final.mjs'
+      - 'e2e/complete.mjs'
       - '.github/workflows/live-mvp.yml'
 
 jobs:
@@ -24,6 +24,6 @@ jobs:
       - run: node e2e/live.mjs
         env:
           LIVE_URL: https://visual-framework-app.vercel.app
-      - run: node e2e/final.mjs
+      - run: node e2e/complete.mjs
         env:
           LIVE_URL: https://visual-framework-app.vercel.app
