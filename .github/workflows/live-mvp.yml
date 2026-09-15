@@ -9,6 +9,7 @@ on:
       - 'e2e/complete.mjs'
       - '.github/workflows/live-mvp.yml'
 
+# Final acceptance includes deterministic offline shell verification.
 jobs:
   live:
     runs-on: ubuntu-latest
