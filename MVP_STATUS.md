@@ -1,73 +1,80 @@
 # Visual Framework MVP Status
 
-This file is the acceptance register for the current MVP.
+Status: ACCEPTED
 
-The MVP exists to prove one complete product loop:
+Accepted: September 15, 2026
 
-Construct and connect → expand → reframe → generate alternatives → challenge and find gaps → reorganize around a goal → compress → create a reusable result or new Framework.
+The desktop MVP has passed its implementation, build, production, and live interaction acceptance gates.
 
-The canonical Framework must remain inspectable and important transformations must remain reversible.
+## Accepted MVP capability
 
-## Implemented
+1. Create Data, Step, Logic, Check, and Result Frames.
+2. Select one or multiple Frames.
+3. Move multiple selected Frames together.
+4. Duplicate, copy, paste, and delete Frames.
+5. Undo and Redo structural edits.
+6. Pan the canvas, zoom around the pointer, and fit the Framework to view.
+7. Connect compatible typed execution ports.
+8. Reject incompatible execution connections.
+9. Select and remove execution or semantic connections.
+10. Preserve tactile cable creation, removal, follow through, and settling behavior without changing exact structural geometry.
+11. Run one Frame independently.
+12. Run the full Framework progressively and expose intermediate Frame completion.
+13. Store and inspect Run history.
+14. Keep execution relationships separate from semantic relationships.
+15. Create semantic relationships such as supports, challenges, contradicts, depends on, causes, contains, reframes, and alternatives.
+16. Assign semantic Frame roles independently of runtime Frame kind.
+17. Represent lightweight epistemic states including unknown and unresolved.
+18. Preserve lightweight provenance for user, model, deterministic, imported, research, and prior Run origins.
+19. Create parent and child hierarchy.
+20. Collapse and restore contained structure.
+21. Run scoped structural operations against a Frame, selection, branch, or Framework.
+22. Structural operations include Expand, Reframe, Alternatives, Challenge, Find Missing, Assumptions, Contradictions, and Compress.
+23. Structural AI output becomes a Proposal before accepted structure changes.
+24. Accept or Reject a Proposal.
+25. Undo and Redo accepted structural transformations.
+26. Reorganize a Framework around Understand, Explain, Decide, Invent, Research, Compare, or Challenge goals.
+27. Run the reasoning linter and navigate from an issue to affected Frames.
+28. Create multiple local Frameworks.
+29. Compress into a separate Framework while preserving the source Framework.
+30. Persist Frameworks and Runs locally with IndexedDB.
+31. Install and reload the application through the PWA shell.
+32. Reload the application offline after installation while online model execution remains explicitly network dependent.
+33. Use the protected server model endpoint without exposing FW_API to the browser.
+34. Build with the locked React, TypeScript, Vite, Vercel, IndexedDB, and PWA architecture.
 
-1. React, TypeScript, Vite, Vercel, IndexedDB and PWA baseline.
-2. Custom desktop canvas with Frame movement, canvas movement, pointer anchored zoom and fit to view.
-3. Create, select, multi select, move, duplicate, copy, paste and delete Frames.
-4. Typed execution ports with magnetic compatible target selection.
-5. Cable selection, removal, follow through, overlapping settle and execution motion.
-6. Independent Frame execution.
-7. Progressive Framework execution with visible intermediate results.
-8. Local deterministic operations and protected online model operations.
-9. Seven reusable reasoning Orders for Frame execution.
-10. Undo and Redo for Framework editing.
-11. Semantic Frame roles separate from execution kind.
-12. Explicit epistemic state including Unknown and Unresolved.
-13. Lightweight provenance on Frames, relationships and Run steps.
-14. Semantic relationships separate from execution relationships.
-15. Parent and child hierarchy with collapse and expansion.
-16. Scoped structural operations for Frame, Selection, Branch and Framework.
-17. Structural operations: Expand, Reframe, Alternatives, Challenge, Find Missing, Assumptions, Contradictions and Compress.
-18. Structural AI output is stored as a Proposal and does not silently rewrite the Framework.
-19. Proposal acceptance and rejection.
-20. Accepted structural transformations are recorded.
-21. Goal specific reorganization for Understand, Explain, Decide, Invent, Research, Compare and Challenge.
-22. Minimal reasoning linter for isolated Frames, unsupported claims, duplicate structure, unresolved contradiction, causal support gaps, direct assumption to result support and reasoning cycles.
-23. Multiple local Frameworks.
-24. Compress can create a separate Framework while preserving the source Framework.
-25. Run history stored in IndexedDB and inspectable from the application.
-26. Semantic zoom reduces visual detail at distant scale.
-27. Build verification through GitHub Actions with strict TypeScript and Vite production build.
+## Acceptance verification
 
-## Acceptance verification still required
+The accepted production MVP passed all of the following gates:
 
-The code is not considered fully accepted until the live desktop application is manually or automatically exercised for the following interactions.
+1. Strict TypeScript type checking.
+2. Vite production build.
+3. Original live end to end production acceptance suite.
+4. Focused remaining contract acceptance suite.
+5. Multi selection movement.
+6. Undo and Redo for Frame creation, movement, connection changes, hierarchy, semantic relationships, goal reorganization, and accepted Proposals.
+7. Compatible and incompatible cable behavior.
+8. Frame independent execution.
+9. Progressive full Framework execution.
+10. Stored Run inspection.
+11. All current structural operations producing reviewable Proposals before mutation.
+12. Proposal rejection without canonical graph mutation.
+13. Proposal acceptance followed by reversible transformation.
+14. Goal specific reorganization followed by reversal.
+15. Reasoning linter issue navigation.
+16. Compression into a second Framework while preserving the original.
+17. IndexedDB persistence after reload.
+18. Deterministic offline PWA shell reload using the current hashed Vite assets.
+19. Explicit failure of online model execution when the network is unavailable.
 
-1. Create five Frame kinds.
-2. Multi select and move several Frames together.
-3. Duplicate, copy and paste a selection.
-4. Undo and Redo each structural edit.
-5. Pan and zoom around a larger Framework.
-6. Fit the complete Framework into view.
-7. Connect compatible execution ports.
-8. Reject incompatible execution ports.
-9. Select and remove a cable.
-10. Create a semantic relationship between two Frames.
-11. Build a parent and child hierarchy.
-12. Collapse and restore the hierarchy.
-13. Run one Frame independently.
-14. Run a complete executable chain and observe each result appear progressively.
-15. Reopen a stored Run and inspect its steps.
-16. Execute each structural operation against a selected Frame.
-17. Confirm the operation creates a Proposal before changing the graph.
-18. Reject a Proposal without changing accepted structure.
-19. Accept a Proposal and Undo the accepted transformation.
-20. Reorganize the Framework around a goal and Undo it.
-21. Run the linter and navigate from an issue to the affected Frames.
-22. Compress a Framework into a new Framework.
-23. Switch between the source Framework and compressed Framework.
-24. Reload the page and confirm Frameworks and Runs persist from IndexedDB.
-25. Confirm the PWA shell reloads when offline while online model Frames correctly require network access.
+## MVP completion boundary
 
-## Not MVP
+The accepted MVP now supports the complete target loop:
 
-Future graph intelligence, evidence depth, competing models, simulation, decision engines, live refresh, specialist engines, framework libraries, cloud synchronization, collaboration and native packaging remain outside the current acceptance boundary.
+Construct and connect → Expand → Reframe → Generate alternatives → Challenge and find gaps → Reorganize around a goal → Compress → produce a result or a new Framework.
+
+The canonical Framework remains preserved unless the user explicitly accepts a change. Important structural transformations remain inspectable and reversible.
+
+This closes the MVP scope.
+
+Future product work begins from `FRAMEWORK_TASKS.md` and must continue to pass the Visual Framework mission filter.
