@@ -1,10 +1,12 @@
 # Visual Framework
 
+MVP status: ACCEPTED on September 15, 2026.
+
 Visual Framework makes structured thought visible, executable, inspectable, challengeable, reframable and reusable.
 
 A Frame can hold information, an explicit Order or both. A Frame can execute independently when its required input exists. During a Framework Run, completed outputs become available to dependent Frames and the chain resolves visibly Frame by Frame.
 
-The current MVP also treats the graph as a reasoning structure. Frames can carry semantic roles, epistemic states and provenance. Semantic relationships remain separate from execution relationships. Structural model operations create Proposals that the user can inspect, accept, reject and reverse.
+The accepted MVP also treats the graph as a reasoning structure. Frames can carry semantic roles, epistemic states and provenance. Semantic relationships remain separate from execution relationships. Structural model operations create Proposals that the user can inspect, accept, reject and reverse.
 
 ## Architecture
 
@@ -60,7 +62,7 @@ The Visual Framework model does not depend on React.
 
 Each operation can run against a Frame, a Selection, a Branch or the complete Framework. Model output remains a Proposal until accepted.
 
-## Current MVP reasoning layer
+## Accepted MVP reasoning layer
 
 1. Semantic Frame roles
 2. Known, supported, verified, assumed, inferred, hypothesized, disputed, contradicted, unknown, unresolved and invalid states
@@ -74,8 +76,9 @@ Each operation can run against a Frame, a Selection, a Branch or the complete Fr
 10. Multiple local Frameworks
 11. Stored Run inspection
 12. Compression into a separate Framework
+13. Deterministic offline PWA shell after installation
 
-See `MVP_STATUS.md` for the acceptance checklist and `FRAMEWORK_TASKS.md` for the mission filtered future register.
+See `MVP_STATUS.md` for the completed acceptance record and `FRAMEWORK_TASKS.md` for the mission filtered future register.
 
 ## Local data migration
 
@@ -99,6 +102,13 @@ Production build:
 ```bash
 npm run build
 ```
+
+## Acceptance
+
+The repository keeps two production browser acceptance suites:
+
+1. `e2e/live.mjs` verifies the complete user loop.
+2. `e2e/complete.mjs` verifies the remaining contract details including cable compatibility, all structural operations, reversibility, linter navigation and offline PWA behavior.
 
 ## Online model
 
