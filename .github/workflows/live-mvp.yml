@@ -6,13 +6,13 @@ on:
     branches: [main]
     paths:
       - 'e2e/live.mjs'
+      - 'e2e/final.mjs'
       - '.github/workflows/live-mvp.yml'
 
-# Acceptance run 2: production multi selection drag fix
 jobs:
   live:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,5 +22,8 @@ jobs:
       - run: npm install --no-save playwright
       - run: npx playwright install --with-deps chromium
       - run: node e2e/live.mjs
+        env:
+          LIVE_URL: https://visual-framework-app.vercel.app
+      - run: node e2e/final.mjs
         env:
           LIVE_URL: https://visual-framework-app.vercel.app
