@@ -34,6 +34,7 @@ function requestValue<T>(request: IDBRequest<T>): Promise<T> {
 }
 
 const defaultRole = (frame: Frame): FrameRole => {
+  if (frame.kind === 'framework') return 'framework';
   if (frame.kind === 'instruction') return 'instruction';
   if (frame.kind === 'expression' || frame.kind === 'check') return 'evaluation';
   if (frame.kind === 'output') return 'result';
@@ -48,11 +49,19 @@ function normalizeFramework(input: FrameworkDocument): FrameworkDocument {
     version: input.version ?? 1,
     proposals: input.proposals ?? [],
     transformations: input.transformations ?? [],
+    chains: input.chains ?? [],
+    patterns: input.patterns ?? [],
+    compositeOperations: input.compositeOperations ?? [],
     frames: (input.frames ?? []).map(frame => ({
       ...frame,
       role: frame.role ?? defaultRole(frame),
-      epistemicState: frame.epistemicState ?? (frame.kind === 'instruction' || frame.kind === 'expression' || frame.kind === 'check' ? 'known' : 'unknown'),
-      provenance: frame.provenance ?? { origin: 'imported', createdAt }
+      epistemicState: frame.epistemicState ?? (frame.kind === 'instruction' || frame.kind === 'expression' || frame.kind === 'check' || frame.kind === 'framework' ? 'known' : 'unknown'),
+      provenance: frame.provenance ?? { origin: 'imported', createdAt },
+      controlState: frame.controlState ?? 'active',
+      assumptions: frame.assumptions ?? [],
+      contextScope: frame.contextScope ?? [],
+      sourceRefs: frame.sourceRefs ?? [],
+      generatedClaims: frame.generatedClaims ?? []
     })),
     connections: (input.connections ?? []).map(connection => ({
       ...connection,
