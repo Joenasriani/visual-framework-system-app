@@ -1,4 +1,4 @@
-export type FrameKind = 'asset' | 'instruction' | 'expression' | 'check' | 'output';
+export type FrameKind = 'asset' | 'instruction' | 'expression' | 'check' | 'output' | 'framework';
 export type OperationMode = 'DETERMINISTIC' | 'MODEL';
 export type ExpressionClass = 'EXECUTABLE' | 'DESCRIPTIVE';
 export type ValueType = 'text' | 'boolean' | 'number' | 'json' | 'any';
@@ -24,7 +24,8 @@ export type FrameRole =
   | 'transformation'
   | 'evaluation'
   | 'result'
-  | 'instruction';
+  | 'instruction'
+  | 'framework';
 
 export type EpistemicState =
   | 'known'
@@ -55,6 +56,70 @@ export interface Port {
   type: ValueType;
 }
 
+export type ChainType =
+  | 'sequence'
+  | 'branch'
+  | 'merge'
+  | 'diamond'
+  | 'parallel'
+  | 'hierarchy'
+  | 'contain'
+  | 'nested'
+  | 'nested-branch'
+  | 'cascade'
+  | 'conditional'
+  | 'gate'
+  | 'reciprocal'
+  | 'feedback'
+  | 'network'
+  | 'recursive-framework'
+  | 'freeform';
+
+export type ExecutionMode =
+  | 'sequential'
+  | 'parallel'
+  | 'ordered-parallel'
+  | 'conditional'
+  | 'manual'
+  | 'iterative';
+
+export type FrameControlState = 'active' | 'disabled' | 'bypass';
+export type FragmentState = 'active' | 'masked' | 'subtracted' | 'replaced';
+export type FragmentKind = 'instruction' | 'assumption' | 'claim' | 'context';
+export type CompositeOperationType = 'disable' | 'bypass' | 'mask' | 'subtract' | 'replace';
+export type CompositeScope = 'frame' | 'selection' | 'branch' | 'descendants' | 'framework';
+
+export interface InstructionFragment {
+  id: string;
+  text: string;
+  kind?: FragmentKind;
+  state?: FragmentState;
+  replacement?: string;
+  provenance?: Provenance;
+}
+
+export interface Claim {
+  id: string;
+  text: string;
+  epistemicState?: EpistemicState;
+  evidenceRefs?: string[];
+  contradictionRefs?: string[];
+  assumptions?: string[];
+  boundaryConditions?: string[];
+  provenance?: Provenance;
+}
+
+export interface CompositeOperationRecord {
+  id: string;
+  type: CompositeOperationType;
+  targetFrameIds: string[];
+  fragmentId?: string;
+  scope: CompositeScope;
+  replacement?: string;
+  appliedAt: string;
+  provenance: Provenance;
+}
+
 export interface Frame {
   id: string;
   kind: FrameKind;
@@ -73,6 +138,14 @@ export interface Frame {
   orderPreset?: string;
   parentId?: string;
   collapsed?: boolean;
+  controlState?: FrameControlState;
+  instructionFragments?: InstructionFragment[];
+  assumptions?: string[];
+  contextScope?: string[];
+  sourceRefs?: string[];
+  generatedClaims?: Claim[];
+  subframeworkId?: string;
+  dependencyFingerprint?: string;
 }
 
 export type ConnectionKind = 'execution' | 'semantic' | 'both';
@@ -96,7 +169,21 @@ export type RelationshipMeaning =
   | 'validates'
   | 'refines'
   | 'reframes'
-  | 'alternative-to';
+  | 'alternative-to'
+  | 'falsifies'
+  | 'narrows'
+  | 'generalizes'
+  | 'replicates'
+  | 'predicts'
+  | 'fails-under'
+  | 'shares-source-with';
+
+export type ConditionOperator = 'always' | 'truthy' | 'falsy' | 'equals' | 'not-equals' | 'contains';
+export interface ConditionRule {
+  operator: ConditionOperator;
+  value?: string;
+  label?: string;
+}
 
 export interface Connection {
   id: string;
@@ -107,6 +194,29 @@ export interface Connection {
   kind?: ConnectionKind;
   meaning?: RelationshipMeaning;
   provenance?: Provenance;
+  chainId?: string;
+  chainType?: ChainType;
+  executionMode?: ExecutionMode;
+  order?: number;
+  condition?: ConditionRule;
+  reason?: string;
+  confidence?: number;
+  isFeedback?: boolean;
+}
+
+export interface ChainDefinition {
+  id: string;
+  label: string;
+  type: ChainType;
+  frameIds: string[];
+  executionMode: ExecutionMode;
+  createdAt: string;
+  provenance?: Provenance;
+  iterationLimit?: number;
+  paused?: boolean;
+  bypassed?: boolean;
+  collapsed?: boolean;
+  relationMeaning?: RelationshipMeaning;
 }
 
 export type FrameworkGoal = 'understand' | 'explain' | 'decide' | 'invent' | 'research' | 'compare' | 'challenge';
@@ -147,11 +257,23 @@ export interface TransformationRecord {
   versionAfter: number;
 }
 
+export interface FrameworkPattern {
+  id: string;
+  name: string;
+  chainType: ChainType;
+  executionMode: ExecutionMode;
+  frameTemplates: Array<Pick<Frame, 'kind' | 'role' | 'title' | 'operation' | 'body' | 'inputs' | 'outputs'>>;
+  createdAt: string;
+}
+
 export interface FrameworkDocument {
   id: string;
   name: string;
   frames: Frame[];
   connections: Connection[];
+  chains?: ChainDefinition[];
+  patterns?: FrameworkPattern[];
+  compositeOperations?: CompositeOperationRecord[];
   goal?: FrameworkGoal;
   proposals?: Proposal[];
   transformations?: TransformationRecord[];
@@ -159,15 +281,28 @@ export interface FrameworkDocument {
   updatedAt: string;
 }
 
+export type RunStepStatus = 'ok' | 'error' | 'cached' | 'skipped' | 'disabled' | 'bypassed';
+
 export interface RunStep {
   frameId: string;
-  status: 'ok' | 'error';
+  status: RunStepStatus;
   input: unknown;
   output?: unknown;
   error?: string;
   durationMs: number;
   executor?: OperationMode;
   provenance?: Provenance;
+  dependencyFingerprint?: string;
+  iteration?: number;
+  reason?: string;
+}
+
+export interface CounterfactualRunMeta {
+  label: string;
+  removedFrameIds: string[];
+  operation: 'disable' | 'bypass' | 'mask' | 'subtract';
+  baseRunId?: string;
+  changedFrameIds?: string[];
 }
 
 export interface FrameworkRun {
@@ -177,12 +312,18 @@ export interface FrameworkRun {
   startedAt: string;
   endedAt?: string;
   activeFrameId?: string | null;
+  activeFrameIds?: string[];
   steps: RunStep[];
+  reusedStepCount?: number;
+  variant?: 'canonical' | 'counterfactual';
+  counterfactual?: CounterfactualRunMeta;
 }
 
 export type RunEvent =
   | { type: 'frame-started'; frameId: string; run: FrameworkRun }
   | { type: 'frame-completed'; frameId: string; run: FrameworkRun }
+  | { type: 'batch-started'; frameIds: string[]; run: FrameworkRun }
+  | { type: 'batch-completed'; frameIds: string[]; run: FrameworkRun }
   | { type: 'run-completed'; run: FrameworkRun };
 
 export type LintSeverity = 'info' | 'warning' | 'error';
