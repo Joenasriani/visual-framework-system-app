@@ -1,8 +1,9 @@
 {
   "name": "Visual Framework",
   "short_name": "Framework",
-  "description": "Build, execute and inspect structured visual frameworks.",
+  "description": "Build, execute, inspect and reframe structured reasoning graphs with Frames, semantic relationships, evidence states and provenance.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#f5f5f7",
   "theme_color": "#f5f5f7",
