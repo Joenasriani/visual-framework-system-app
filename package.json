@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit --pretty false"
+    "typecheck": "tsc --noEmit --pretty false",
+    "accept:legacy": "node e2e/complete.mjs",
+    "accept:final": "node e2e/final.mjs"
   },
   "dependencies": {
     "react": "19.3.0",
