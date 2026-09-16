@@ -12,6 +12,7 @@ import type {
 
 const FRAME_GAP_X = 286;
 const FRAME_GAP_Y = 154;
+const STRUCTURAL_CHAIN_TYPES = new Set<ChainType>(['hierarchy','contain','nested','nested-branch','recursive-framework']);
 
 const clone = <T,>(value: T): T => structuredClone(value);
 const now = () => new Date().toISOString();
@@ -237,6 +238,7 @@ export function applyChain(
   let frames = clone(framework.frames);
   let selected = sourceFrames;
   const selectedIds = new Set(sourceFrames.map(frame => frame.id));
+  const structuralOnly = STRUCTURAL_CHAIN_TYPES.has(type);
 
   if (type === 'recursive-framework') {
     const container = makeRecursiveContainer(sourceFrames);
@@ -263,9 +265,10 @@ export function applyChain(
   const arrangedMap = new Map(arranged.map(frame => [frame.id, frame]));
   frames = frames.map(frame => arrangedMap.has(frame.id) ? { ...frame, x: arrangedMap.get(frame.id)!.x, y: arrangedMap.get(frame.id)!.y, parentId: arrangedMap.get(frame.id)!.parentId ?? frame.parentId } : frame);
 
-  const internalSelected = new Set(chain.frameIds);
+  const internalSelected = new Set(sourceFrames.map(frame => frame.id));
   const preservedConnections = framework.connections.filter(connection => {
-    if (connection.kind === 'semantic') return !(connection.chainId && connection.chainId === chain.id);
+    if (connection.kind === 'semantic') return true;
+    if (structuralOnly) return true;
     return !(internalSelected.has(connection.fromFrame) && internalSelected.has(connection.toFrame));
   });
 
@@ -281,11 +284,16 @@ export function applyChain(
     additions = selected.slice(1).map((frame, index) => semanticContains(chain, container, frame, index));
   }
 
+  const existingChains = framework.chains ?? [];
+  const retainedChains = structuralOnly
+    ? existingChains
+    : existingChains.filter(item => STRUCTURAL_CHAIN_TYPES.has(item.type) || !item.frameIds.every(id => selectedIds.has(id)));
+
   return {
     ...framework,
     frames,
     connections: [...preservedConnections, ...additions],
-    chains: [...(framework.chains ?? []).filter(item => !item.frameIds.every(id => selectedIds.has(id))), chain],
+    chains: [...retainedChains, chain],
     version: (framework.version ?? 1) + 1,
     updatedAt: createdAt
   };
@@ -301,7 +309,8 @@ export function updateChain(framework: FrameworkDocument, chainId: string, patch
     connections: framework.connections.map(connection => connection.chainId === chainId && changed ? {
       ...connection,
       chainType: changed.type,
-      executionMode: changed.executionMode
+      executionMode: changed.executionMode,
+      meaning: changed.relationMeaning ?? connection.meaning
     } : connection),
     version: (framework.version ?? 1) + 1,
     updatedAt: createdAt
@@ -310,7 +319,7 @@ export function updateChain(framework: FrameworkDocument, chainId: string, patch
 
 export function reverseChain(framework: FrameworkDocument, chainId: string): FrameworkDocument {
   const chain = (framework.chains ?? []).find(item => item.id === chainId);
-  if (!chain || chain.frameIds.length < 2 || ['hierarchy','contain','nested','nested-branch','recursive-framework'].includes(chain.type)) return framework;
+  if (!chain || chain.frameIds.length < 2 || STRUCTURAL_CHAIN_TYPES.has(chain.type)) return framework;
   const reversed = [...chain.frameIds].reverse();
   const without = {
     ...framework,
