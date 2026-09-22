@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://visual-framework-app.vercel.app/sitemap.xml
+Sitemap: https://visual-framework-system.vercel.app/sitemap.xml
