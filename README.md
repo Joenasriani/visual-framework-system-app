@@ -8,6 +8,10 @@ A Frame can hold information, an explicit Order or both. A Frame can execute ind
 
 The accepted MVP also treats the graph as a reasoning structure. Frames can carry semantic roles, epistemic states and provenance. Semantic relationships remain separate from execution relationships. Structural model operations create Proposals that the user can inspect, accept, reject and reverse.
 
+## Project status
+
+Visual Framework is currently a working prototype. Investment and strategic partnerships are being explored to accelerate its development toward a complete production release.
+
 ## Architecture
 
 The project baseline is locked to:
