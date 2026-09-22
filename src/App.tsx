@@ -1,1221 +1,228 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { compatible, runFramework, runSingleFrame, validateFramework } from './domain/engine';
+import { compatible, runChain, runCounterfactual, runFramework, runSingleFrame, validateFramework } from './domain/engine';
+import { applyChain, CHAIN_TYPES, defaultExecutionMode, EXECUTION_MODES, removeChain, reverseChain, saveChainPattern, updateChain } from './domain/chains';
+import { applyCompositeOperation, frameFragments, restoreComposition, setFragmentState, syncFrameFragments } from './domain/compositing';
 import { lintFramework } from './domain/linter';
 import { FRAME_ORDERS } from './domain/orders';
 import { createSeedFramework, FRAME_HEIGHT, FRAME_WIDTH } from './domain/seed';
-import {
-  applyProposal,
-  proposalToFramework,
-  rejectProposal,
-  reorganizeForGoal,
-  requestStructuralProposal
-} from './domain/structural';
-import type {
-  EpistemicState,
-  Frame,
-  FrameKind,
-  FrameRole,
-  FrameworkDocument,
-  FrameworkGoal,
-  FrameworkRun,
-  FrameworkScope,
-  Port,
-  Proposal,
-  RelationshipMeaning,
-  StructuralOperation
-} from './domain/types';
-import {
-  listFrameworks,
-  listRuns,
-  loadFramework,
-  saveFramework,
-  saveRun,
-  setActiveFrameworkId
-} from './storage/indexeddb';
+import { applyProposal, proposalToFramework, rejectProposal, reorganizeForGoal, requestStructuralProposal } from './domain/structural';
+import type { ChainDefinition, ChainType, CompositeOperationType, EpistemicState, ExecutionMode, FragmentState, Frame, FrameKind, FrameRole, FrameworkDocument, FrameworkGoal, FrameworkRun, FrameworkScope, Port, Proposal, RelationshipMeaning, StructuralOperation } from './domain/types';
+import { listFrameworks, listRuns, loadFramework, saveFramework, saveRun, setActiveFrameworkId } from './storage/indexeddb';
 
-const KIND_LABELS: Record<FrameKind, string> = {
-  asset: 'DATA',
-  instruction: 'STEP',
-  expression: 'LOGIC',
-  check: 'CHECK',
-  output: 'RESULT'
-};
-
-const ROLES: FrameRole[] = [
-  'concept','claim','question','assumption','evidence','constraint','variable','observation','perspective','cause','effect','decision','criterion','hypothesis','alternative','unknown','contradiction','transformation','evaluation','result','instruction'
-];
-const STATES: EpistemicState[] = [
-  'known','supported','verified','assumed','inferred','hypothesized','disputed','contradicted','unknown','unresolved','invalid'
-];
+const KIND_LABELS: Record<FrameKind, string> = { asset: 'DATA', instruction: 'STEP', expression: 'LOGIC', check: 'CHECK', output: 'RESULT', framework: 'FRAMEWORK' };
+const ROLES: FrameRole[] = ['concept','claim','question','assumption','evidence','constraint','variable','observation','perspective','cause','effect','decision','criterion','hypothesis','alternative','unknown','contradiction','transformation','evaluation','result','instruction','framework'];
+const STATES: EpistemicState[] = ['known','supported','verified','assumed','inferred','hypothesized','disputed','contradicted','unknown','unresolved','invalid'];
 const GOALS: FrameworkGoal[] = ['understand','explain','decide','invent','research','compare','challenge'];
-const RELATIONSHIPS: RelationshipMeaning[] = [
-  'supports','challenges','contradicts','depends-on','causes','influences','constrains','explains','derives-from','evidence-for','assumes','questions','tests','validates','refines','reframes','alternative-to','contains','part-of'
-];
-const STRUCTURAL_OPERATIONS: Array<[StructuralOperation, string]> = [
-  ['expand','Expand'],
-  ['reframe','Reframe'],
-  ['alternatives','Alternatives'],
-  ['challenge','Challenge'],
-  ['find-missing','Find Missing'],
-  ['identify-assumption','Assumptions'],
-  ['find-contradiction','Contradictions'],
-  ['compress','Compress']
-];
+const RELATIONSHIPS: RelationshipMeaning[] = ['supports','challenges','contradicts','depends-on','causes','influences','constrains','explains','derives-from','evidence-for','assumes','questions','tests','validates','refines','reframes','alternative-to','contains','part-of','falsifies','narrows','generalizes','replicates','predicts','fails-under','shares-source-with'];
+const STRUCTURAL_OPERATIONS: Array<[StructuralOperation,string]> = [['expand','Expand'],['reframe','Reframe'],['alternatives','Alternatives'],['challenge','Challenge'],['find-missing','Find Missing'],['identify-assumption','Assumptions'],['find-contradiction','Contradictions'],['compress','Compress']];
+const COMPOSITE_OPERATIONS: Array<[CompositeOperationType,string]> = [['disable','Disable'],['bypass','Bypass'],['mask','Mask'],['subtract','Subtract']];
 
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-const clone = <T,>(value: T): T => structuredClone(value);
-const short = (value: unknown, limit = 82) => {
-  if (value === undefined || value === null) return '';
-  const text = typeof value === 'string' ? value : JSON.stringify(value);
-  return text.length > limit ? `${text.slice(0, Math.max(0, limit - 1))}…` : text;
-};
-const label = (value: string) => value.replaceAll('-', ' ').replace(/\b\w/g, match => match.toUpperCase());
+const clamp = (v:number,min:number,max:number) => Math.max(min,Math.min(max,v));
+const clone = <T,>(value:T):T => structuredClone(value);
+const label = (value:string) => value.replaceAll('-',' ').replace(/\b\w/g,m=>m.toUpperCase());
+const short = (value:unknown,limit=82) => { if(value==null)return ''; const text=typeof value==='string'?value:JSON.stringify(value); return text.length>limit?`${text.slice(0,limit-1)}…`:text; };
+const completedStep = (status?:FrameworkRun['steps'][number]['status']) => Boolean(status && status !== 'error');
 
-function portCenter(frame: Frame, side: 'in' | 'out', index = 0) {
-  return { x: side === 'out' ? frame.x + FRAME_WIDTH : frame.x, y: frame.y + 54 + index * 22 };
-}
-function semanticPoint(frame: Frame, side: 'from' | 'to') {
-  return { x: side === 'from' ? frame.x + FRAME_WIDTH : frame.x, y: frame.y + FRAME_HEIGHT / 2 };
+function chainPreview(type:ChainType,count:number){
+  const n=Math.max(2,Math.min(count,5));
+  if(type==='sequence'||type==='cascade') return Array.from({length:n},()=> '●').join(' → ');
+  if(type==='branch'||type==='conditional') return `● ⇢ { ${Array.from({length:n-1},()=> '●').join('  ')} }`;
+  if(type==='merge'||type==='gate') return `{ ${Array.from({length:n-1},()=> '●').join('  ')} } ⇢ ●`;
+  if(type==='diamond'||type==='parallel') return `● ⇢ { ${Array.from({length:Math.max(1,n-2)},()=> '●').join('  ')} } ⇢ ●`;
+  if(type==='feedback') return '● → ● → ● ↺';
+  if(type==='reciprocal') return '● ⇄ ●';
+  if(type==='hierarchy'||type==='contain') return '● ⊃ { ●  ● }';
+  if(type==='nested'||type==='nested-branch') return '● ⊃ ● ⊃ { ● }';
+  if(type==='recursive-framework') return '▣ ⊃ { ●  ●  ● }';
+  if(type==='network') return '● ↔ ● ↔ ●';
+  return '● ··· ●';
 }
 
-interface CurveGeometry {
-  d: string;
-  mid: { x: number; y: number };
-}
-function curveGeometry(
-  a: { x: number; y: number },
-  b: { x: number; y: number },
-  sourceMotion?: { x: number; y: number },
-  targetMotion?: { x: number; y: number }
-): CurveGeometry {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const dir = dx >= 0 ? 1 : -1;
-  const bend = Math.max(66, Math.min(280, Math.abs(dx) * 0.46 + Math.abs(dy) * 0.13));
-  const c1 = { x: a.x + dir * bend + (sourceMotion?.x ?? 0), y: a.y + (sourceMotion?.y ?? 0) };
-  const c2 = { x: b.x - dir * bend + (targetMotion?.x ?? 0), y: b.y + (targetMotion?.y ?? 0) };
-  const t = 0.5;
-  const mt = 1 - t;
-  const mid = {
-    x: mt ** 3 * a.x + 3 * mt ** 2 * t * c1.x + 3 * mt * t ** 2 * c2.x + t ** 3 * b.x,
-    y: mt ** 3 * a.y + 3 * mt ** 2 * t * c1.y + 3 * mt * t ** 2 * c2.y + t ** 3 * b.y
-  };
-  return { d: `M ${a.x} ${a.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${b.x} ${b.y}`, mid };
+function portCenter(frame:Frame,side:'in'|'out',index=0){ return {x:side==='out'?frame.x+FRAME_WIDTH:frame.x,y:frame.y+54+index*22}; }
+function semanticPoint(frame:Frame,side:'from'|'to'){ return {x:side==='from'?frame.x+FRAME_WIDTH:frame.x,y:frame.y+FRAME_HEIGHT/2}; }
+function curveGeometry(a:{x:number;y:number},b:{x:number;y:number},sourceMotion?:{x:number;y:number},targetMotion?:{x:number;y:number}){
+  const dx=b.x-a.x,dy=b.y-a.y,dir=dx>=0?1:-1,bend=Math.max(66,Math.min(280,Math.abs(dx)*.46+Math.abs(dy)*.13));
+  const c1={x:a.x+dir*bend+(sourceMotion?.x??0),y:a.y+(sourceMotion?.y??0)},c2={x:b.x-dir*bend+(targetMotion?.x??0),y:b.y+(targetMotion?.y??0)},t=.5,mt=1-t;
+  const mid={x:mt**3*a.x+3*mt**2*t*c1.x+3*mt*t**2*c2.x+t**3*b.x,y:mt**3*a.y+3*mt**2*t*c1.y+3*mt*t**2*c2.y+t**3*b.y};
+  return {d:`M ${a.x} ${a.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${b.x} ${b.y}`,mid};
 }
 
-function makeFrame(kind: FrameKind, x: number, y: number): Frame {
-  const id = `${kind}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-  const createdAt = new Date().toISOString();
-  const provenance = { origin: 'user' as const, createdAt };
-  if (kind === 'asset') {
-    return { id, kind, role: 'concept', epistemicState: 'unknown', provenance, title: 'Concept', operation: 'DETERMINISTIC', x, y, inputs: [], outputs: [{ id: 'out', name: 'value', type: 'any' }], body: '', value: 'New concept' };
-  }
-  if (kind === 'instruction') {
-    return { id, kind, role: 'instruction', epistemicState: 'known', provenance, title: 'Step', operation: 'MODEL', x, y, inputs: [{ id: 'in', name: 'input', type: 'any' }], outputs: [{ id: 'out', name: 'result', type: 'any' }], body: 'Transform the input.' };
-  }
-  if (kind === 'expression') {
-    return { id, kind, role: 'evaluation', epistemicState: 'known', provenance, title: 'Logic', operation: 'DETERMINISTIC', expressionClass: 'EXECUTABLE', x, y, inputs: [{ id: 'in', name: 'input', type: 'text' }], outputs: [{ id: 'out', name: 'value', type: 'boolean' }], body: 'notEmpty(input)' };
-  }
-  if (kind === 'check') {
-    return { id, kind, role: 'evaluation', epistemicState: 'known', provenance, title: 'Check', operation: 'DETERMINISTIC', x, y, inputs: [{ id: 'in', name: 'input', type: 'any' }], outputs: [{ id: 'out', name: 'valid', type: 'boolean' }], body: 'Pass if truthy' };
-  }
-  return { id, kind, role: 'result', epistemicState: 'inferred', provenance, title: 'Result', operation: 'DETERMINISTIC', x, y, inputs: [{ id: 'in', name: 'input', type: 'any' }], outputs: [], body: '' };
+function makeFrame(kind:FrameKind,x:number,y:number):Frame{
+  const id=`${kind}-${Date.now()}-${Math.floor(Math.random()*1000)}`,createdAt=new Date().toISOString(),provenance={origin:'user' as const,createdAt};
+  const base={id,kind,provenance,x,y,controlState:'active' as const,assumptions:[],contextScope:[],sourceRefs:[],generatedClaims:[]};
+  if(kind==='asset') return {...base,role:'concept',epistemicState:'unknown',title:'Concept',operation:'DETERMINISTIC',inputs:[],outputs:[{id:'out',name:'value',type:'any'}],body:'',value:'New concept'};
+  if(kind==='instruction') return {...base,role:'instruction',epistemicState:'known',title:'Step',operation:'MODEL',inputs:[{id:'in',name:'input',type:'any'}],outputs:[{id:'out',name:'result',type:'any'}],body:'Transform the input.'};
+  if(kind==='expression') return {...base,role:'evaluation',epistemicState:'known',title:'Logic',operation:'DETERMINISTIC',expressionClass:'EXECUTABLE',inputs:[{id:'in',name:'input',type:'text'}],outputs:[{id:'out',name:'value',type:'boolean'}],body:'notEmpty(input)'};
+  if(kind==='check') return {...base,role:'evaluation',epistemicState:'known',title:'Check',operation:'DETERMINISTIC',inputs:[{id:'in',name:'input',type:'any'}],outputs:[{id:'out',name:'valid',type:'boolean'}],body:'Pass if truthy'};
+  if(kind==='framework') return {...base,role:'framework',epistemicState:'known',title:'Sub-framework',operation:'DETERMINISTIC',inputs:[{id:'in',name:'input',type:'any'}],outputs:[{id:'out',name:'result',type:'any'}],body:'Contained framework',collapsed:false};
+  return {...base,role:'result',epistemicState:'inferred',title:'Result',operation:'DETERMINISTIC',inputs:[{id:'in',name:'input',type:'any'}],outputs:[],body:''};
 }
 
-interface DragState {
-  pointerId: number;
-  frameIds: string[];
-  startWorldX: number;
-  startWorldY: number;
-  startPositions: Record<string, { x: number; y: number }>;
-  before: FrameworkDocument;
-  lastX: number;
-  lastY: number;
-  lastT: number;
-  vx: number;
-  vy: number;
-  moved: boolean;
-}
-interface WireState {
-  fromFrame: string;
-  fromPort: string;
-  outputType: Port['type'];
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-}
-interface ClipboardState {
-  frames: Frame[];
-  connections: FrameworkDocument['connections'];
-}
-type SideMode = 'frame' | 'issues' | 'runs' | 'proposal' | 'framework';
-type ScopeMode = FrameworkScope['kind'];
+interface DragState{pointerId:number;frameIds:string[];startWorldX:number;startWorldY:number;startPositions:Record<string,{x:number;y:number}>;before:FrameworkDocument;lastX:number;lastY:number;lastT:number;vx:number;vy:number;moved:boolean}
+interface WireState{fromFrame:string;fromPort:string;outputType:Port['type'];x1:number;y1:number;x2:number;y2:number}
+interface ClipboardState{frames:Frame[];connections:FrameworkDocument['connections'];chains:ChainDefinition[]}
+type SideMode='frame'|'issues'|'runs'|'proposal'|'framework'|'chain';
+type ScopeMode=FrameworkScope['kind']|'descendants';
 
-function descendants(framework: FrameworkDocument, rootId: string) {
-  const found = new Set<string>();
-  const walk = (id: string) => {
-    for (const frame of framework.frames) {
-      if (frame.parentId === id && !found.has(frame.id)) {
-        found.add(frame.id);
-        walk(frame.id);
-      }
-    }
-  };
-  walk(rootId);
-  return found;
+function descendants(framework:FrameworkDocument,rootId:string){
+  const found=new Set<string>(); const walk=(id:string)=>{ for(const frame of framework.frames){ if(frame.parentId===id&&!found.has(frame.id)){found.add(frame.id);walk(frame.id);} } }; walk(rootId); return found;
 }
 
-export default function App() {
-  const [framework, setFramework] = useState<FrameworkDocument>(() => createSeedFramework());
-  const frameworkRef = useRef(framework);
-  const [frameworkList, setFrameworkList] = useState<FrameworkDocument[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [selectedFrameIds, setSelectedFrameIds] = useState<string[]>(['instruction-1']);
-  const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
-  const [run, setRun] = useState<FrameworkRun | null>(null);
-  const [runs, setRuns] = useState<FrameworkRun[]>([]);
-  const [status, setStatus] = useState('READY');
-  const [scale, setScale] = useState(1);
-  const [wire, setWire] = useState<WireState | null>(null);
-  const wireRef = useRef<WireState | null>(null);
-  const [newConnectionId, setNewConnectionId] = useState<string | null>(null);
-  const [removingConnectionId, setRemovingConnectionId] = useState<string | null>(null);
-  const [cableMotion, setCableMotion] = useState<{ frameId: string; x: number; y: number } | null>(null);
-  const [sideMode, setSideMode] = useState<SideMode>('frame');
-  const [scopeMode, setScopeMode] = useState<ScopeMode>('frame');
-  const [relationshipMeaning, setRelationshipMeaning] = useState<RelationshipMeaning>('supports');
-  const stageRef = useRef<HTMLDivElement | null>(null);
-  const dragRef = useRef<DragState | null>(null);
-  const panRef = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
-  const persistTimer = useRef<number | null>(null);
-  const clipboardRef = useRef<ClipboardState | null>(null);
-  const pastRef = useRef<Array<{ doc: FrameworkDocument; label: string }>>([]);
-  const futureRef = useRef<Array<{ doc: FrameworkDocument; label: string }>>([]);
-  const [historyTick, setHistoryTick] = useState(0);
-  const reducedMotion = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, []);
+export default function App(){
+  const [framework,setFramework]=useState<FrameworkDocument>(()=>createSeedFramework());
+  const frameworkRef=useRef(framework);
+  const [frameworkList,setFrameworkList]=useState<FrameworkDocument[]>([]);
+  const [loaded,setLoaded]=useState(false);
+  const [selectedFrameIds,setSelectedFrameIds]=useState<string[]>(['instruction-1']);
+  const [selectedConnectionId,setSelectedConnectionId]=useState<string|null>(null);
+  const [selectedChainId,setSelectedChainId]=useState<string|null>(null);
+  const [run,setRun]=useState<FrameworkRun|null>(null);
+  const [runs,setRuns]=useState<FrameworkRun[]>([]);
+  const [status,setStatus]=useState('READY');
+  const [scale,setScale]=useState(1);
+  const [wire,setWire]=useState<WireState|null>(null); const wireRef=useRef<WireState|null>(null);
+  const [newConnectionId,setNewConnectionId]=useState<string|null>(null),[removingConnectionId,setRemovingConnectionId]=useState<string|null>(null);
+  const [cableMotion,setCableMotion]=useState<{frameId:string;x:number;y:number}|null>(null);
+  const [sideMode,setSideMode]=useState<SideMode>('frame'),[scopeMode,setScopeMode]=useState<ScopeMode>('frame');
+  const [relationshipMeaning,setRelationshipMeaning]=useState<RelationshipMeaning>('supports');
+  const [chainType,setChainType]=useState<ChainType>('sequence'),[chainExecutionMode,setChainExecutionMode]=useState<ExecutionMode>('sequential');
+  const [compositeOperation,setCompositeOperation]=useState<CompositeOperationType>('bypass');
+  const stageRef=useRef<HTMLDivElement|null>(null),dragRef=useRef<DragState|null>(null),panRef=useRef<{pointerId:number;x:number;y:number;left:number;top:number}|null>(null);
+  const persistTimer=useRef<number|null>(null),clipboardRef=useRef<ClipboardState|null>(null);
+  const pastRef=useRef<Array<{doc:FrameworkDocument;label:string}>>([]),futureRef=useRef<Array<{doc:FrameworkDocument;label:string}>>([]);
+  const [historyTick,setHistoryTick]=useState(0);
+  const reducedMotion=useMemo(()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches,[]);
+  const selectedFrameId=selectedFrameIds.at(-1)??'';
+  const selectedChain=useMemo(()=>selectedChainId?(framework.chains??[]).find(chain=>chain.id===selectedChainId)??null:null,[framework.chains,selectedChainId]);
 
-  const selectedFrameId = selectedFrameIds.at(-1) ?? '';
+  const refreshLists=useCallback(async(frameworkId:string)=>{const [docs,storedRuns]=await Promise.all([listFrameworks(),listRuns(frameworkId)]);setFrameworkList(docs);setRuns(storedRuns);},[]);
+  useEffect(()=>{loadFramework().then(async saved=>{frameworkRef.current=saved;setFramework(saved);setSelectedFrameIds(saved.frames[0]?.id?[saved.frames[0].id]:[]);pastRef.current=[];futureRef.current=[];setLoaded(true);await refreshLists(saved.id);});},[refreshLists]);
+  const persist=useCallback((doc=frameworkRef.current,delay=160)=>{if(!loaded)return;if(persistTimer.current)window.clearTimeout(persistTimer.current);persistTimer.current=window.setTimeout(()=>saveFramework(doc).catch(()=>undefined),delay);},[loaded]);
+  const recordHistory=useCallback((doc:FrameworkDocument,historyLabel:string)=>{pastRef.current=[...pastRef.current,{doc:clone(doc),label:historyLabel}].slice(-100);futureRef.current=[];setHistoryTick(v=>v+1);},[]);
+  const changeFramework=useCallback((updater:(current:FrameworkDocument)=>FrameworkDocument,options?:{save?:boolean;record?:boolean;label?:string})=>{const save=options?.save??true,record=options?.record??true,historyLabel=options?.label??'Edit Framework';setFramework(current=>{if(record)recordHistory(current,historyLabel);const next=updater(current);frameworkRef.current=next;if(save)persist(next);return next;});},[persist,recordHistory]);
+  const undo=useCallback(()=>{const previous=pastRef.current.pop();if(!previous)return;futureRef.current.push({doc:clone(frameworkRef.current),label:previous.label});const next=clone(previous.doc);frameworkRef.current=next;setFramework(next);setRun(null);setSelectedChainId(null);persist(next,0);setHistoryTick(v=>v+1);},[persist]);
+  const redo=useCallback(()=>{const item=futureRef.current.pop();if(!item)return;pastRef.current.push({doc:clone(frameworkRef.current),label:item.label});const next=clone(item.doc);frameworkRef.current=next;setFramework(next);setRun(null);setSelectedChainId(null);persist(next,0);setHistoryTick(v=>v+1);},[persist]);
 
-  const refreshLists = useCallback(async (frameworkId: string) => {
-    const [docs, storedRuns] = await Promise.all([listFrameworks(), listRuns(frameworkId)]);
-    setFrameworkList(docs);
-    setRuns(storedRuns);
-  }, []);
+  const frameMap=useMemo(()=>new Map(framework.frames.map(frame=>[frame.id,frame])),[framework.frames]);
+  const stepMap=useMemo(()=>new Map((run?.steps??[]).map(step=>[step.frameId,step])),[run]);
+  const selectedFrame=selectedFrameId?frameMap.get(selectedFrameId)??null:null;
+  const lintIssues=useMemo(()=>lintFramework(framework),[framework]);
+  const executionIssues=useMemo(()=>validateFramework(framework),[framework]);
+  const activeProposal=useMemo(()=>[...(framework.proposals??[])].reverse().find(item=>item.status==='pending')??null,[framework.proposals]);
+  const hiddenIds=useMemo(()=>{const hidden=new Set<string>();for(const frame of framework.frames)if(frame.collapsed)for(const id of descendants(framework,frame.id))hidden.add(id);return hidden;},[framework]);
+  const visibleFrames=useMemo(()=>framework.frames.filter(frame=>!hiddenIds.has(frame.id)),[framework.frames,hiddenIds]);
+  const visibleIds=useMemo(()=>new Set(visibleFrames.map(frame=>frame.id)),[visibleFrames]);
+  const childrenByParent=useMemo(()=>{const map=new Map<string,Frame[]>();for(const frame of framework.frames)if(frame.parentId)map.set(frame.parentId,[...(map.get(frame.parentId)??[]),frame]);return map;},[framework.frames]);
+  const worldWidth=Math.max(1500,...framework.frames.map(frame=>frame.x+FRAME_WIDTH+260)),worldHeight=Math.max(900,...framework.frames.map(frame=>frame.y+FRAME_HEIGHT+300));
 
-  useEffect(() => {
-    loadFramework().then(async saved => {
-      frameworkRef.current = saved;
-      setFramework(saved);
-      setSelectedFrameIds(saved.frames[0]?.id ? [saved.frames[0].id] : []);
-      pastRef.current = [];
-      futureRef.current = [];
-      setLoaded(true);
-      await refreshLists(saved.id);
-    });
-  }, [refreshLists]);
+  const updateFrame=useCallback((frameId:string,patch:Partial<Frame>,record=true)=>{changeFramework(current=>({...current,updatedAt:new Date().toISOString(),version:(current.version??1)+(record?1:0),frames:current.frames.map(frame=>{if(frame.id!==frameId)return frame;const next={...frame,...patch};if(typeof patch.body==='string'&&patch.body!==frame.body&&patch.instructionFragments===undefined)return syncFrameFragments(next,patch.body);return next;})}),{record,label:'Edit Frame'});setRun(null);},[changeFramework]);
+  const addFrame=useCallback((kind:FrameKind)=>{const stage=stageRef.current,x=Math.max(32,((stage?.scrollLeft??0)+(stage?.clientWidth??900)/2)/scale-FRAME_WIDTH/2+Math.random()*22),y=Math.max(48,((stage?.scrollTop??0)+(stage?.clientHeight??600)/2)/scale-FRAME_HEIGHT/2+Math.random()*22),frame=makeFrame(kind,x,y);changeFramework(current=>({...current,version:(current.version??1)+1,updatedAt:new Date().toISOString(),frames:[...current.frames,frame]}),{label:'Add Frame'});setSelectedConnectionId(null);setSelectedChainId(null);setSelectedFrameIds([frame.id]);setSideMode('frame');setRun(null);},[changeFramework,scale]);
+  const deleteSelection=useCallback(()=>{if(!selectedFrameIds.length)return;const ids=new Set(selectedFrameIds);changeFramework(current=>({...current,version:(current.version??1)+1,updatedAt:new Date().toISOString(),frames:current.frames.filter(frame=>!ids.has(frame.id)).map(frame=>ids.has(frame.parentId??'')?{...frame,parentId:undefined}:frame),connections:current.connections.filter(c=>!ids.has(c.fromFrame)&&!ids.has(c.toFrame)),chains:(current.chains??[]).map(chain=>({...chain,frameIds:chain.frameIds.filter(id=>!ids.has(id))})).filter(chain=>chain.frameIds.length>1)}),{label:'Delete Frames'});setSelectedFrameIds([]);setSelectedChainId(null);setRun(null);},[changeFramework,selectedFrameIds]);
+  const copySelection=useCallback(()=>{if(!selectedFrameIds.length)return;const ids=new Set(selectedFrameIds);clipboardRef.current={frames:clone(frameworkRef.current.frames.filter(frame=>ids.has(frame.id))),connections:clone(frameworkRef.current.connections.filter(c=>ids.has(c.fromFrame)&&ids.has(c.toFrame))),chains:clone((frameworkRef.current.chains??[]).filter(chain=>chain.frameIds.every(id=>ids.has(id))))};setStatus('COPIED');window.setTimeout(()=>setStatus(current=>current==='COPIED'?'READY':current),650);},[selectedFrameIds]);
+  const pasteSelection=useCallback(()=>{const clip=clipboardRef.current;if(!clip?.frames.length)return;const stamp=Date.now(),mapping=new Map<string,string>(),chainMapping=new Map<string,string>();clip.frames.forEach((frame,index)=>mapping.set(frame.id,`${frame.kind}-${stamp}-${index}`));clip.chains.forEach((chain,index)=>chainMapping.set(chain.id,`chain-${stamp}-${index}`));const createdAt=new Date().toISOString();const frames=clip.frames.map(frame=>({...clone(frame),id:mapping.get(frame.id)!,x:frame.x+34,y:frame.y+34,parentId:frame.parentId&&mapping.has(frame.parentId)?mapping.get(frame.parentId):undefined,provenance:{origin:'user' as const,createdAt}}));const connections=clip.connections.map((c,index)=>({...clone(c),id:`copy-link-${stamp}-${index}`,fromFrame:mapping.get(c.fromFrame)!,toFrame:mapping.get(c.toFrame)!,chainId:c.chainId?chainMapping.get(c.chainId):undefined,provenance:{origin:'user' as const,createdAt}}));const chains=clip.chains.map(chain=>({...clone(chain),id:chainMapping.get(chain.id)!,frameIds:chain.frameIds.map(id=>mapping.get(id)!).filter(Boolean),createdAt,provenance:{origin:'user' as const,createdAt}}));changeFramework(current=>({...current,version:(current.version??1)+1,updatedAt:createdAt,frames:[...current.frames,...frames],connections:[...current.connections,...connections],chains:[...(current.chains??[]),...chains]}),{label:'Paste Frames'});setSelectedFrameIds(frames.map(frame=>frame.id));if(chains.length===1){setSelectedChainId(chains[0].id);setSideMode('chain');}setRun(null);},[changeFramework]);
+  const duplicateSelection=useCallback(()=>{copySelection();requestAnimationFrame(()=>pasteSelection());},[copySelection,pasteSelection]);
 
-  const persist = useCallback((doc = frameworkRef.current, delay = 160) => {
-    if (!loaded) return;
-    if (persistTimer.current) window.clearTimeout(persistTimer.current);
-    persistTimer.current = window.setTimeout(() => saveFramework(doc).catch(() => undefined), delay);
-  }, [loaded]);
+  const startCableFollowThrough=useCallback((frameId:string,vx:number,vy:number)=>{if(reducedMotion)return;const speed=Math.hypot(vx,vy);if(speed<.025)return;const ax=clamp(vx*74,-28,28),ay=clamp(vy*74,-24,24),started=performance.now(),duration=430;const tick=(time:number)=>{const t=Math.min(1,(time-started)/duration),decay=Math.exp(-4.6*t),swing=Math.cos(t*Math.PI*2.45);setCableMotion({frameId,x:ax*decay*swing,y:ay*decay*swing});if(t<1)requestAnimationFrame(tick);else setCableMotion(null);};requestAnimationFrame(tick);},[reducedMotion]);
+  const settleFrame=useCallback((frameId:string,vx:number,vy:number)=>{if(reducedMotion)return;const el=document.querySelector<HTMLElement>(`[data-frame="${frameId}"]`);if(!el?.animate)return;const speed=Math.min(1,Math.hypot(vx,vy)*1.8),lift=1.006+speed*.008;el.animate([{transform:'scale(1)',offset:0},{transform:`scale(${lift})`,offset:.36},{transform:'scale(.997)',offset:.72},{transform:'scale(1)',offset:1}],{duration:230,easing:'cubic-bezier(.2,.78,.22,1)'});},[reducedMotion]);
+  const onFramePointerDown=useCallback((event:React.PointerEvent<HTMLDivElement>,frame:Frame)=>{if((event.target as HTMLElement).closest('button,input,textarea,select,[data-port]'))return;event.stopPropagation();const additive=event.shiftKey||event.metaKey||event.ctrlKey;let selection=selectedFrameIds;if(!selection.includes(frame.id))selection=additive?[...selection,frame.id]:[frame.id];setSelectedFrameIds(selection);setSelectedConnectionId(null);setSelectedChainId(null);setSideMode('frame');const stage=stageRef.current;if(!stage)return;const rect=stage.getBoundingClientRect(),startWorldX=(event.clientX-rect.left+stage.scrollLeft)/scale,startWorldY=(event.clientY-rect.top+stage.scrollTop)/scale,startPositions:Record<string,{x:number;y:number}>={};for(const id of selection){const item=frameworkRef.current.frames.find(candidate=>candidate.id===id);if(item)startPositions[id]={x:item.x,y:item.y};}dragRef.current={pointerId:event.pointerId,frameIds:selection,startWorldX,startWorldY,startPositions,before:clone(frameworkRef.current),lastX:event.clientX,lastY:event.clientY,lastT:performance.now(),vx:0,vy:0,moved:false};event.currentTarget.setPointerCapture(event.pointerId);},[scale,selectedFrameIds]);
+  const autoPan=useCallback((clientX:number,clientY:number)=>{const stage=stageRef.current;if(!stage)return;const rect=stage.getBoundingClientRect(),edge=72,speed=14;let dx=0,dy=0;if(clientX<rect.left+edge)dx=-speed;else if(clientX>rect.right-edge)dx=speed;if(clientY<rect.top+edge)dy=-speed;else if(clientY>rect.bottom-edge)dy=speed;if(dx||dy)stage.scrollBy(dx,dy);},[]);
+  const onFramePointerMove=useCallback((event:React.PointerEvent<HTMLDivElement>)=>{const drag=dragRef.current,stage=stageRef.current;if(!drag||drag.pointerId!==event.pointerId||!stage)return;autoPan(event.clientX,event.clientY);const rect=stage.getBoundingClientRect(),worldX=(event.clientX-rect.left+stage.scrollLeft)/scale,worldY=(event.clientY-rect.top+stage.scrollTop)/scale,dx=worldX-drag.startWorldX,dy=worldY-drag.startWorldY;if(Math.abs(dx)+Math.abs(dy)>1)drag.moved=true;const time=performance.now(),dt=Math.max(8,time-drag.lastT),ivx=(event.clientX-drag.lastX)/(dt*scale),ivy=(event.clientY-drag.lastY)/(dt*scale);drag.vx=drag.vx*.62+ivx*.38;drag.vy=drag.vy*.62+ivy*.38;drag.lastX=event.clientX;drag.lastY=event.clientY;drag.lastT=time;changeFramework(current=>({...current,frames:current.frames.map(item=>{const start=drag.startPositions[item.id];return start?{...item,x:Math.max(16,start.x+dx),y:Math.max(16,start.y+dy)}:item;})}),{save:false,record:false});},[autoPan,changeFramework,scale]);
+  const onFramePointerUp=useCallback((event:React.PointerEvent<HTMLDivElement>)=>{const drag=dragRef.current;if(!drag||drag.pointerId!==event.pointerId)return;dragRef.current=null;if(drag.moved){recordHistory(drag.before,drag.frameIds.length>1?'Move Frames':'Move Frame');persist(frameworkRef.current,0);}const decay=performance.now()-drag.lastT>85?.25:1,vx=drag.vx*decay,vy=drag.vy*decay;for(const id of drag.frameIds){settleFrame(id,vx,vy);startCableFollowThrough(id,vx,vy);}},[persist,recordHistory,settleFrame,startCableFollowThrough]);
 
-  const recordHistory = useCallback((doc: FrameworkDocument, historyLabel: string) => {
-    pastRef.current = [...pastRef.current, { doc: clone(doc), label: historyLabel }].slice(-100);
-    futureRef.current = [];
-    setHistoryTick(value => value + 1);
-  }, []);
+  const startWire=useCallback((event:React.PointerEvent<HTMLButtonElement>,frame:Frame,port:Port,portIndex:number)=>{event.stopPropagation();event.preventDefault();const point=portCenter(frame,'out',portIndex),next:WireState={fromFrame:frame.id,fromPort:port.id,outputType:port.type,x1:point.x,y1:point.y,x2:point.x,y2:point.y};wireRef.current=next;setWire(next);setSelectedConnectionId(null);setSelectedChainId(null);setStatus('CONNECT');},[]);
+  const nearestCompatiblePort=useCallback((clientX:number,clientY:number,activeWire:WireState)=>{const candidates=Array.from(document.querySelectorAll<HTMLButtonElement>('[data-port="in"]'));let best:{frameId:string;portId:string;distance:number}|null=null;const source=frameMap.get(activeWire.fromFrame);if(!source)return null;for(const element of candidates){const frameId=element.dataset.frameId,portId=element.dataset.portId;if(!frameId||!portId||frameId===source.id)continue;const frame=frameMap.get(frameId),input=frame?.inputs.find(port=>port.id===portId);if(!frame||!input||!compatible(activeWire.outputType,input.type))continue;const rect=element.getBoundingClientRect(),distance=Math.hypot(clientX-(rect.left+rect.width/2),clientY-(rect.top+rect.height/2));if(distance<=38&&(!best||distance<best.distance))best={frameId,portId,distance};}return best;},[frameMap]);
+  useEffect(()=>{const onMove=(event:PointerEvent)=>{const active=wireRef.current,stage=stageRef.current;if(!active||!stage)return;autoPan(event.clientX,event.clientY);const rect=stage.getBoundingClientRect(),next={...active,x2:(event.clientX-rect.left+stage.scrollLeft)/scale,y2:(event.clientY-rect.top+stage.scrollTop)/scale};wireRef.current=next;setWire(next);};const onUp=(event:PointerEvent)=>{const active=wireRef.current;if(!active)return;const target=nearestCompatiblePort(event.clientX,event.clientY,active);if(target){const id=`e-${Date.now()}`,createdAt=new Date().toISOString();changeFramework(current=>({...current,version:(current.version??1)+1,updatedAt:createdAt,connections:[...current.connections.filter(c=>c.kind==='semantic'||!(c.toFrame===target.frameId&&c.toPort===target.portId)),{id,fromFrame:active.fromFrame,fromPort:active.fromPort,toFrame:target.frameId,toPort:target.portId,kind:'execution',meaning:'feeds',provenance:{origin:'user',createdAt}}]}),{label:'Connect Frames'});setNewConnectionId(id);window.setTimeout(()=>setNewConnectionId(null),340);setRun(null);}wireRef.current=null;setWire(null);setStatus('READY');};window.addEventListener('pointermove',onMove);window.addEventListener('pointerup',onUp);window.addEventListener('pointercancel',onUp);return()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);window.removeEventListener('pointercancel',onUp);};},[autoPan,changeFramework,nearestCompatiblePort,scale]);
 
-  const changeFramework = useCallback((
-    updater: (current: FrameworkDocument) => FrameworkDocument,
-    options?: { save?: boolean; record?: boolean; label?: string }
-  ) => {
-    const save = options?.save ?? true;
-    const record = options?.record ?? true;
-    const historyLabel = options?.label ?? 'Edit Framework';
-    setFramework(current => {
-      if (record) recordHistory(current, historyLabel);
-      const next = updater(current);
-      frameworkRef.current = next;
-      if (save) persist(next);
-      return next;
-    });
-  }, [persist, recordHistory]);
+  const removeConnection=useCallback((id:string)=>{if(removingConnectionId)return;const remove=()=>{changeFramework(current=>({...current,version:(current.version??1)+1,connections:current.connections.filter(c=>c.id!==id),updatedAt:new Date().toISOString()}),{label:'Remove Connection'});setSelectedConnectionId(null);setRemovingConnectionId(null);setRun(null);};if(reducedMotion)remove();else{setRemovingConnectionId(id);window.setTimeout(remove,250);}},[changeFramework,reducedMotion,removingConnectionId]);
+  const connectMeaning=useCallback(()=>{if(selectedFrameIds.length!==2)return;const [fromFrame,toFrame]=selectedFrameIds;if(fromFrame===toFrame)return;const createdAt=new Date().toISOString();changeFramework(current=>({...current,version:(current.version??1)+1,updatedAt:createdAt,connections:[...current.connections,{id:`semantic-${Date.now()}`,fromFrame,fromPort:'',toFrame,toPort:'',kind:'semantic',meaning:relationshipMeaning,provenance:{origin:'user',createdAt}}]}),{label:'Add Meaning Relationship'});},[changeFramework,relationshipMeaning,selectedFrameIds]);
+  const containSelection=useCallback(()=>{if(selectedFrameIds.length<2||!selectedFrameId)return;const parentId=selectedFrameId,childIds=selectedFrameIds.filter(id=>id!==parentId),createdAt=new Date().toISOString();changeFramework(current=>{const existing=new Set(current.connections.filter(c=>c.meaning==='contains').map(c=>`${c.fromFrame}:${c.toFrame}`));const additions=childIds.filter(id=>!existing.has(`${parentId}:${id}`)).map((id,index)=>({id:`contains-${Date.now()}-${index}`,fromFrame:parentId,fromPort:'',toFrame:id,toPort:'',kind:'semantic' as const,meaning:'contains' as const,provenance:{origin:'user' as const,createdAt}}));return {...current,version:(current.version??1)+1,updatedAt:createdAt,frames:current.frames.map(frame=>childIds.includes(frame.id)?{...frame,parentId}:frame),connections:[...current.connections,...additions]};},{label:'Create Hierarchy'});},[changeFramework,selectedFrameId,selectedFrameIds]);
+  const releaseFromParent=useCallback(()=>{if(!selectedFrameIds.length)return;const ids=new Set(selectedFrameIds),pairs=new Set(frameworkRef.current.frames.filter(frame=>ids.has(frame.id)&&frame.parentId).map(frame=>`${frame.parentId}:${frame.id}`));changeFramework(current=>({...current,version:(current.version??1)+1,updatedAt:new Date().toISOString(),frames:current.frames.map(frame=>ids.has(frame.id)?{...frame,parentId:undefined}:frame),connections:current.connections.filter(c=>!(c.meaning==='contains'&&pairs.has(`${c.fromFrame}:${c.toFrame}`)))}),{label:'Release Hierarchy'});},[changeFramework,selectedFrameIds]);
+  const toggleCollapsed=useCallback((frameId:string)=>{const item=frameMap.get(frameId);if(item)updateFrame(frameId,{collapsed:!item.collapsed});},[frameMap,updateFrame]);
 
-  const undo = useCallback(() => {
-    const previous = pastRef.current.pop();
-    if (!previous) return;
-    futureRef.current.push({ doc: clone(frameworkRef.current), label: previous.label });
-    const next = clone(previous.doc);
-    frameworkRef.current = next;
-    setFramework(next);
-    setRun(null);
-    persist(next, 0);
-    setHistoryTick(value => value + 1);
-  }, [persist]);
+  const branchIds=useCallback((rootId:string)=>{const found=new Set<string>([rootId]),queue=[rootId];while(queue.length){const current=queue.shift()!;for(const c of frameworkRef.current.connections)if(c.fromFrame===current&&!found.has(c.toFrame)){found.add(c.toFrame);queue.push(c.toFrame);}for(const child of frameworkRef.current.frames.filter(frame=>frame.parentId===current))if(!found.has(child.id)){found.add(child.id);queue.push(child.id);}}return [...found];},[]);
+  const scopeFrameIds=useCallback(()=>{if(scopeMode==='framework')return frameworkRef.current.frames.map(frame=>frame.id);if(scopeMode==='selection')return selectedFrameIds.length?selectedFrameIds:frameworkRef.current.frames.map(frame=>frame.id);if(scopeMode==='branch'&&selectedFrameId)return branchIds(selectedFrameId);if(scopeMode==='descendants'&&selectedFrameId)return [...descendants(frameworkRef.current,selectedFrameId)];return selectedFrameId?[selectedFrameId]:frameworkRef.current.frames.slice(0,1).map(frame=>frame.id);},[branchIds,scopeMode,selectedFrameId,selectedFrameIds]);
+  const currentScope=useCallback(():FrameworkScope=>{const ids=scopeFrameIds();if(scopeMode==='framework')return{kind:'framework',frameIds:ids};if(scopeMode==='selection')return{kind:'selection',frameIds:ids};if(scopeMode==='branch'||scopeMode==='descendants')return{kind:'branch',frameIds:ids};return{kind:'frame',frameIds:ids};},[scopeFrameIds,scopeMode]);
 
-  const redo = useCallback(() => {
-    const nextItem = futureRef.current.pop();
-    if (!nextItem) return;
-    pastRef.current.push({ doc: clone(frameworkRef.current), label: nextItem.label });
-    const next = clone(nextItem.doc);
-    frameworkRef.current = next;
-    setFramework(next);
-    setRun(null);
-    persist(next, 0);
-    setHistoryTick(value => value + 1);
-  }, [persist]);
+  const fitView=useCallback(()=>{const stage=stageRef.current;if(!stage||!visibleFrames.length)return;const minX=Math.min(...visibleFrames.map(f=>f.x)),minY=Math.min(...visibleFrames.map(f=>f.y)),maxX=Math.max(...visibleFrames.map(f=>f.x+FRAME_WIDTH)),maxY=Math.max(...visibleFrames.map(f=>f.y+FRAME_HEIGHT)),width=Math.max(1,maxX-minX),height=Math.max(1,maxY-minY),padding=90,next=clamp(Math.min((stage.clientWidth-padding*2)/width,(stage.clientHeight-padding*2)/height),.35,1.35);setScale(next);requestAnimationFrame(()=>{stage.scrollLeft=Math.max(0,(minX+width/2)*next-stage.clientWidth/2);stage.scrollTop=Math.max(0,(minY+height/2)*next-stage.clientHeight/2);});},[visibleFrames]);
+  const applySelectedChain=useCallback(()=>{if(selectedFrameIds.length<2&&chainType!=='recursive-framework')return;const next=applyChain(frameworkRef.current,selectedFrameIds,chainType,chainExecutionMode),chain=next.chains?.at(-1);if(next===frameworkRef.current||!chain)return;changeFramework(()=>next,{label:`Chain ${chainType}`});setSelectedChainId(chain.id);setSelectedFrameIds(chain.frameIds);setSideMode('chain');setRun(null);requestAnimationFrame(()=>fitView());},[chainExecutionMode,chainType,changeFramework,fitView,selectedFrameIds]);
+  const mutateChain=useCallback((updater:(doc:FrameworkDocument)=>FrameworkDocument,historyLabel:string)=>{if(!selectedChainId)return;const next=updater(frameworkRef.current);changeFramework(()=>next,{label:historyLabel});setRun(null);},[changeFramework,selectedChainId]);
+  const updateChainRelationship=useCallback((meaning:RelationshipMeaning)=>{if(!selectedChainId)return;mutateChain(doc=>{const next=updateChain(doc,selectedChainId,{relationMeaning:meaning});return {...next,connections:next.connections.map(c=>c.chainId===selectedChainId?{...c,meaning}:c)};},'Change Chain Relationship');},[mutateChain,selectedChainId]);
+  const applyComposite=useCallback(()=>{const ids=scopeFrameIds();if(!ids.length)return;const scope=scopeMode==='descendants'?'descendants':scopeMode;const next=applyCompositeOperation(frameworkRef.current,ids,compositeOperation,scope);changeFramework(()=>next,{label:`${label(compositeOperation)} ${label(scope)}`});setRun(null);},[changeFramework,compositeOperation,scopeFrameIds,scopeMode]);
+  const restoreScopedComposition=useCallback(()=>{const ids=scopeFrameIds();if(!ids.length)return;changeFramework(()=>restoreComposition(frameworkRef.current,ids),{label:'Restore Composition'});setRun(null);},[changeFramework,scopeFrameIds]);
 
-  const frameMap = useMemo(() => new Map(framework.frames.map(frame => [frame.id, frame])), [framework.frames]);
-  const stepMap = useMemo(() => new Map((run?.steps ?? []).map(step => [step.frameId, step])), [run]);
-  const selectedFrame = selectedFrameId ? frameMap.get(selectedFrameId) ?? null : null;
-  const lintIssues = useMemo(() => lintFramework(framework), [framework]);
-  const executionIssues = useMemo(() => validateFramework(framework), [framework]);
-  const activeProposal = useMemo(() => [...(framework.proposals ?? [])].reverse().find(item => item.status === 'pending') ?? null, [framework.proposals]);
+  const runStructuralOperation=useCallback(async(operation:StructuralOperation)=>{setStatus('THINKING');try{const proposal=await requestStructuralProposal(frameworkRef.current,currentScope(),operation);changeFramework(current=>({...current,proposals:[...(current.proposals??[]).filter(item=>item.id!==proposal.id),proposal],updatedAt:new Date().toISOString()}),{record:false});setSideMode('proposal');setStatus('PROPOSAL');}catch(error){setStatus('STOPPED');console.error(error);}},[changeFramework,currentScope]);
+  const acceptActiveProposal=useCallback(async()=>{if(!activeProposal)return;if(activeProposal.operation==='compress'){const acceptedSource={...frameworkRef.current,proposals:[...(frameworkRef.current.proposals??[]).filter(item=>item.id!==activeProposal.id),{...activeProposal,status:'accepted' as const}],updatedAt:new Date().toISOString()};await saveFramework(acceptedSource);const compressed=proposalToFramework(acceptedSource,activeProposal);await saveFramework(compressed);await setActiveFrameworkId(compressed.id);frameworkRef.current=compressed;setFramework(compressed);setSelectedFrameIds(compressed.frames[0]?.id?[compressed.frames[0].id]:[]);setSelectedChainId(null);pastRef.current=[];futureRef.current=[];setHistoryTick(v=>v+1);setRun(null);setSideMode('framework');await refreshLists(compressed.id);setStatus('READY');return;}changeFramework(current=>applyProposal(current,activeProposal),{label:`Accept ${activeProposal.operation}`});setSideMode('frame');setStatus('READY');},[activeProposal,changeFramework,refreshLists]);
+  const rejectActiveProposal=useCallback(()=>{if(activeProposal){changeFramework(current=>rejectProposal(current,activeProposal),{record:false});setSideMode('frame');setStatus('READY');}},[activeProposal,changeFramework]);
+  const organizeGoal=useCallback((goal:FrameworkGoal)=>{changeFramework(current=>reorganizeForGoal(current,goal),{label:`Organize for ${goal}`});setRun(null);requestAnimationFrame(()=>fitView());},[changeFramework,fitView]);
 
-  const hiddenIds = useMemo(() => {
-    const hidden = new Set<string>();
-    for (const frame of framework.frames) {
-      if (!frame.collapsed) continue;
-      for (const id of descendants(framework, frame.id)) hidden.add(id);
-    }
-    return hidden;
-  }, [framework]);
-  const visibleFrames = useMemo(() => framework.frames.filter(frame => !hiddenIds.has(frame.id)), [framework.frames, hiddenIds]);
-  const visibleIds = useMemo(() => new Set(visibleFrames.map(frame => frame.id)), [visibleFrames]);
-  const childrenByParent = useMemo(() => {
-    const map = new Map<string, Frame[]>();
-    for (const frame of framework.frames) {
-      if (!frame.parentId) continue;
-      map.set(frame.parentId, [...(map.get(frame.parentId) ?? []), frame]);
-    }
-    return map;
-  }, [framework.frames]);
-  const worldWidth = Math.max(1500, ...framework.frames.map(frame => frame.x + FRAME_WIDTH + 260));
-  const worldHeight = Math.max(900, ...framework.frames.map(frame => frame.y + FRAME_HEIGHT + 300));
+  const mergeSingleRun=useCallback((previous:FrameworkRun|null,single:FrameworkRun)=>{const merged=new Map((previous?.steps??[]).filter(step=>frameworkRef.current.frames.some(frame=>frame.id===step.frameId)).map(step=>[step.frameId,step]));for(const step of single.steps)merged.set(step.frameId,step);return {...single,steps:[...merged.values()]};},[]);
+  const executeSelected=useCallback(async()=>{if(!selectedFrameId)return;setStatus('RUNNING');const single=await runSingleFrame(frameworkRef.current,selectedFrameId,run),merged=mergeSingleRun(run,single);setRun(merged);setStatus(single.status==='ok'?'PASSED':'STOPPED');await saveRun(single).catch(()=>undefined);setRuns(await listRuns(frameworkRef.current.id).catch(()=>[]));},[mergeSingleRun,run,selectedFrameId]);
+  const canonicalPreviousRun=useCallback(()=>{if(run?.variant!=='counterfactual'&&run?.frameworkId===frameworkRef.current.id)return run;return runs.find(item=>item.frameworkId===frameworkRef.current.id&&item.variant!=='counterfactual')??null;},[run,runs]);
+  const executeAll=useCallback(async()=>{setStatus('RUNNING');setRun({id:`run-${Date.now()}`,frameworkId:frameworkRef.current.id,status:'running',startedAt:new Date().toISOString(),activeFrameId:null,activeFrameIds:[],steps:[],variant:'canonical'});const final=await runFramework(frameworkRef.current,event=>setRun(event.run),{previousRun:canonicalPreviousRun()});setRun(final);setStatus(final.status==='ok'?'PASSED':'STOPPED');await saveRun(final).catch(()=>undefined);setRuns(await listRuns(frameworkRef.current.id).catch(()=>[]));},[canonicalPreviousRun]);
+  const executeSelectedChain=useCallback(async()=>{if(!selectedChainId)return;setStatus('RUNNING');const final=await runChain(frameworkRef.current,selectedChainId,canonicalPreviousRun(),event=>setRun(event.run));setRun(final);setStatus(final.status==='ok'?'PASSED':'STOPPED');await saveRun(final).catch(()=>undefined);setRuns(await listRuns(frameworkRef.current.id).catch(()=>[]));},[canonicalPreviousRun,selectedChainId]);
+  const executeCounterfactual=useCallback(async(operation:'disable'|'bypass'|'mask'|'subtract'='disable')=>{const ids=selectedFrameIds.length?selectedFrameIds:scopeFrameIds();if(!ids.length)return;setStatus('RUNNING');let base=canonicalPreviousRun();if(!base||base.status!=='ok'){base=await runFramework(frameworkRef.current,undefined,{previousRun:base});await saveRun(base).catch(()=>undefined);}const counterfactual=await runCounterfactual(frameworkRef.current,base,ids,operation,event=>setRun(event.run));setRun(counterfactual);setStatus(counterfactual.status==='ok'?'PASSED':'STOPPED');await saveRun(counterfactual).catch(()=>undefined);setRuns(await listRuns(frameworkRef.current.id).catch(()=>[]));setSideMode('runs');},[canonicalPreviousRun,scopeFrameIds,selectedFrameIds]);
 
-  const updateFrame = useCallback((frameId: string, patch: Partial<Frame>, record = true) => {
-    changeFramework(current => ({
-      ...current,
-      updatedAt: new Date().toISOString(),
-      version: (current.version ?? 1) + (record ? 1 : 0),
-      frames: current.frames.map(frame => frame.id === frameId ? { ...frame, ...patch } : frame)
-    }), { record, label: 'Edit Frame' });
-    setRun(null);
-  }, [changeFramework]);
+  const switchFramework=useCallback(async(id:string)=>{if(id===frameworkRef.current.id)return;await saveFramework(frameworkRef.current).catch(()=>undefined);await setActiveFrameworkId(id);const next=await loadFramework(id);frameworkRef.current=next;setFramework(next);setSelectedFrameIds(next.frames[0]?.id?[next.frames[0].id]:[]);setSelectedConnectionId(null);setSelectedChainId(null);setRun(null);setScale(1);pastRef.current=[];futureRef.current=[];setHistoryTick(v=>v+1);setSideMode('framework');await refreshLists(next.id);},[refreshLists]);
+  const reset=useCallback(()=>{const seed=createSeedFramework();recordHistory(frameworkRef.current,'Reset Framework');frameworkRef.current=seed;setFramework(seed);setSelectedFrameIds(['instruction-1']);setSelectedConnectionId(null);setSelectedChainId(null);setRun(null);setRuns([]);setScale(1);setCableMotion(null);setStatus('READY');saveFramework(seed).catch(()=>undefined);},[recordHistory]);
 
-  const addFrame = useCallback((kind: FrameKind) => {
-    const stage = stageRef.current;
-    const x = Math.max(32, ((stage?.scrollLeft ?? 0) + (stage?.clientWidth ?? 900) / 2) / scale - FRAME_WIDTH / 2 + Math.random() * 22);
-    const y = Math.max(48, ((stage?.scrollTop ?? 0) + (stage?.clientHeight ?? 600) / 2) / scale - FRAME_HEIGHT / 2 + Math.random() * 22);
-    const frame = makeFrame(kind, x, y);
-    changeFramework(current => ({ ...current, version: (current.version ?? 1) + 1, updatedAt: new Date().toISOString(), frames: [...current.frames, frame] }), { label: 'Add Frame' });
-    setSelectedConnectionId(null);
-    setSelectedFrameIds([frame.id]);
-    setSideMode('frame');
-    setRun(null);
-  }, [changeFramework, scale]);
+  useEffect(()=>{const onKey=(event:KeyboardEvent)=>{const target=event.target as HTMLElement;if(target.matches('input,textarea,select'))return;const command=event.metaKey||event.ctrlKey,key=event.key.toLowerCase();if(command&&key==='z'){event.preventDefault();event.shiftKey?redo():undo();return;}if(command&&key==='c'){event.preventDefault();copySelection();return;}if(command&&key==='v'){event.preventDefault();pasteSelection();return;}if(command&&key==='d'){event.preventDefault();duplicateSelection();return;}if(command&&key==='r'){event.preventDefault();void executeAll();return;}const kinds:Record<string,FrameKind>={'1':'asset','2':'instruction','3':'expression','4':'check','5':'output'};if(kinds[event.key])addFrame(kinds[event.key]);if(event.key==='Delete'||event.key==='Backspace'){selectedConnectionId?removeConnection(selectedConnectionId):deleteSelection();}if(event.key==='Escape'){setSelectedFrameIds([]);setSelectedConnectionId(null);setSelectedChainId(null);wireRef.current=null;setWire(null);setStatus('READY');}};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[addFrame,copySelection,deleteSelection,duplicateSelection,executeAll,pasteSelection,redo,removeConnection,selectedConnectionId,undo]);
+  const onStagePointerDown=useCallback((event:React.PointerEvent<HTMLDivElement>)=>{const target=event.target as HTMLElement;if(target.closest('[data-frame],[data-port],[data-connection-hit],[data-remove-connection]')||wireRef.current)return;if(event.button!==0&&event.button!==1)return;const stage=stageRef.current;if(!stage)return;if(!(event.shiftKey||event.metaKey||event.ctrlKey))setSelectedFrameIds([]);setSelectedConnectionId(null);setSelectedChainId(null);panRef.current={pointerId:event.pointerId,x:event.clientX,y:event.clientY,left:stage.scrollLeft,top:stage.scrollTop};stage.classList.add('panning');stage.setPointerCapture(event.pointerId);},[]);
+  const onStagePointerMove=useCallback((event:React.PointerEvent<HTMLDivElement>)=>{const pan=panRef.current,stage=stageRef.current;if(!pan||pan.pointerId!==event.pointerId||!stage)return;stage.scrollLeft=pan.left-(event.clientX-pan.x);stage.scrollTop=pan.top-(event.clientY-pan.y);},[]);
+  const endPan=useCallback(()=>{panRef.current=null;stageRef.current?.classList.remove('panning');},[]);
+  const onWheel=useCallback((event:React.WheelEvent<HTMLDivElement>)=>{if(!(event.ctrlKey||event.metaKey))return;event.preventDefault();const stage=stageRef.current;if(!stage)return;const old=scale,next=clamp(+(old+(event.deltaY<0?.08:-.08)).toFixed(2),.35,1.6);if(next===old)return;const rect=stage.getBoundingClientRect(),sx=event.clientX-rect.left,sy=event.clientY-rect.top,worldX=(stage.scrollLeft+sx)/old,worldY=(stage.scrollTop+sy)/old;setScale(next);requestAnimationFrame(()=>{stage.scrollLeft=worldX*next-sx;stage.scrollTop=worldY*next-sy;});},[scale]);
 
-  const deleteSelection = useCallback(() => {
-    if (!selectedFrameIds.length) return;
-    const ids = new Set(selectedFrameIds);
-    changeFramework(current => ({
-      ...current,
-      version: (current.version ?? 1) + 1,
-      updatedAt: new Date().toISOString(),
-      frames: current.frames.filter(frame => !ids.has(frame.id)).map(frame => ids.has(frame.parentId ?? '') ? { ...frame, parentId: undefined } : frame),
-      connections: current.connections.filter(connection => !ids.has(connection.fromFrame) && !ids.has(connection.toFrame))
-    }), { label: 'Delete Frames' });
-    setSelectedFrameIds([]);
-    setRun(null);
-  }, [changeFramework, selectedFrameIds]);
+  const connectionCount=framework.connections.length,proposalCount=framework.proposals?.filter(item=>item.status==='pending').length??0;void historyTick;
+  if(!loaded)return <div className="boot">Visual Framework</div>;
 
-  const copySelection = useCallback(() => {
-    if (!selectedFrameIds.length) return;
-    const ids = new Set(selectedFrameIds);
-    clipboardRef.current = {
-      frames: clone(frameworkRef.current.frames.filter(frame => ids.has(frame.id))),
-      connections: clone(frameworkRef.current.connections.filter(connection => ids.has(connection.fromFrame) && ids.has(connection.toFrame)))
-    };
-    setStatus('COPIED');
-    window.setTimeout(() => setStatus(current => current === 'COPIED' ? 'READY' : current), 650);
-  }, [selectedFrameIds]);
+  return <main className="app-shell">
+    <header className="topbar"><div className="brand"><span className="brand-mark">VF</span><span className="brand-name">Visual Framework</span></div><div className="top-actions"><span className={`status status-${status.toLowerCase()}`}><i/><b>{status}</b></span><button className="text-btn" onClick={undo} disabled={!pastRef.current.length}>Undo</button><button className="text-btn" onClick={redo} disabled={!futureRef.current.length}>Redo</button><button className="text-btn" onClick={()=>setSideMode('issues')}>Issues {lintIssues.length+executionIssues.length}</button><button className="text-btn" onClick={()=>setSideMode('runs')}>Runs {runs.length}</button><button className="text-btn" onClick={reset}>Reset</button><button className="run-button" onClick={()=>void executeAll()} disabled={status==='RUNNING'||status==='THINKING'}><span>Run</span><kbd>⌘R</kbd></button></div></header>
 
-  const pasteSelection = useCallback(() => {
-    const clip = clipboardRef.current;
-    if (!clip?.frames.length) return;
-    const stamp = Date.now();
-    const mapping = new Map<string, string>();
-    clip.frames.forEach((frame, index) => mapping.set(frame.id, `${frame.kind}-${stamp}-${index}`));
-    const createdAt = new Date().toISOString();
-    const frames = clip.frames.map(frame => ({
-      ...clone(frame),
-      id: mapping.get(frame.id)!,
-      x: frame.x + 34,
-      y: frame.y + 34,
-      parentId: frame.parentId && mapping.has(frame.parentId) ? mapping.get(frame.parentId) : undefined,
-      provenance: { origin: 'user' as const, createdAt }
-    }));
-    const connections = clip.connections.map((connection, index) => ({
-      ...clone(connection),
-      id: `copy-link-${stamp}-${index}`,
-      fromFrame: mapping.get(connection.fromFrame)!,
-      toFrame: mapping.get(connection.toFrame)!,
-      provenance: { origin: 'user' as const, createdAt }
-    }));
-    changeFramework(current => ({
-      ...current,
-      version: (current.version ?? 1) + 1,
-      updatedAt: createdAt,
-      frames: [...current.frames, ...frames],
-      connections: [...current.connections, ...connections]
-    }), { label: 'Paste Frames' });
-    setSelectedFrameIds(frames.map(frame => frame.id));
-    setRun(null);
-  }, [changeFramework]);
+    <aside className="tool-rail" aria-label="Add to framework"><div className="tool-caption">ADD FRAME</div>{([['asset','◆','Data','1'],['instruction','→','Step','2'],['expression','ƒ','Logic','3'],['check','✓','Check','4'],['output','□','Result','5']] as const).map(([kind,glyph,toolLabel,key])=><button key={kind} className="tool" title={`Add ${toolLabel} Frame`} onClick={()=>addFrame(kind)}><span className="tool-glyph">{glyph}</span><span className="tool-label">{toolLabel}</span><span className="tool-key">{key}</span></button>)}<div className="rail-divider"/><button className="tool compact" onClick={duplicateSelection} disabled={!selectedFrameIds.length}><span className="tool-glyph">⧉</span><span className="tool-label">Duplicate</span></button><button className="tool compact" onClick={deleteSelection} disabled={!selectedFrameIds.length}><span className="tool-glyph">−</span><span className="tool-label">Remove</span></button><button className="tool compact" onClick={fitView}><span className="tool-glyph">⌗</span><span className="tool-label">Fit</span></button></aside>
 
-  const duplicateSelection = useCallback(() => {
-    copySelection();
-    requestAnimationFrame(() => pasteSelection());
-  }, [copySelection, pasteSelection]);
+    <section className="workspace">
+      <div className="workspace-head"><div className="framework-heading"><select className="framework-switch" value={framework.id} onChange={event=>void switchFramework(event.target.value)}>{frameworkList.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}{!frameworkList.some(item=>item.id===framework.id)&&<option value={framework.id}>{framework.name}</option>}</select><span>{framework.frames.length} frames · {connectionCount} links · {(framework.chains??[]).length} chains</span>{selectedFrameIds.length>1&&<b className="selection-count">{selectedFrameIds.length} selected</b>}</div><div className="workspace-controls">{selectedFrameIds.length>1&&<div className="chain-builder"><select className="chain-type-select" value={chainType} onChange={event=>{const next=event.target.value as ChainType;setChainType(next);setChainExecutionMode(defaultExecutionMode(next));}}>{CHAIN_TYPES.map(item=><option key={item} value={item}>{label(item)}</option>)}</select><select className="execution-mode-select" value={chainExecutionMode} onChange={event=>setChainExecutionMode(event.target.value as ExecutionMode)}>{EXECUTION_MODES.map(item=><option key={item} value={item}>{label(item)}</option>)}</select><span className="chain-preview">{chainPreview(chainType,selectedFrameIds.length)}</span><button className="quiet-action chain-apply" onClick={applySelectedChain}>Chain</button></div>}{selectedFrameIds.length===2&&<><select className="relation-select" value={relationshipMeaning} onChange={event=>setRelationshipMeaning(event.target.value as RelationshipMeaning)}>{RELATIONSHIPS.map(item=><option key={item} value={item}>{label(item)}</option>)}</select><button className="quiet-action" onClick={connectMeaning}>Relate</button></>}<button className="quiet-action" onClick={fitView}>Fit</button><div className="zoom"><button onClick={()=>setScale(v=>clamp(+(v-.1).toFixed(2),.35,1.6))}>−</button><span>{Math.round(scale*100)}%</span><button onClick={()=>setScale(v=>clamp(+(v+.1).toFixed(2),.35,1.6))}>+</button></div></div></div>
+      <div className="structure-bar"><div className="scope-control"><span>SCOPE</span><select value={scopeMode} onChange={event=>setScopeMode(event.target.value as ScopeMode)}><option value="frame">Frame</option><option value="selection">Selection</option><option value="branch">Branch</option><option value="descendants">Descendants</option><option value="framework">Framework</option></select></div><div className="structure-actions">{STRUCTURAL_OPERATIONS.map(([op,text])=><button key={op} onClick={()=>void runStructuralOperation(op)} disabled={status==='THINKING'||status==='RUNNING'}>{text}</button>)}</div><div className="compose-control"><span>COMPOSE</span><select value={compositeOperation} onChange={event=>setCompositeOperation(event.target.value as CompositeOperationType)}>{COMPOSITE_OPERATIONS.map(([value,text])=><option key={value} value={value}>{text}</option>)}</select><button onClick={applyComposite}>Apply</button><button onClick={restoreScopedComposition}>Restore</button></div>{selectedFrameIds.length>0&&<button className="counterfactual-action" onClick={()=>void executeCounterfactual('disable')}>Without selection</button>}<div className="goal-control"><span>GOAL</span><select value={framework.goal??'understand'} onChange={event=>organizeGoal(event.target.value as FrameworkGoal)}>{GOALS.map(goal=><option key={goal} value={goal}>{label(goal)}</option>)}</select></div></div>
 
-  const startCableFollowThrough = useCallback((frameId: string, vx: number, vy: number) => {
-    if (reducedMotion) return;
-    const speed = Math.hypot(vx, vy);
-    if (speed < 0.025) return;
-    const ax = clamp(vx * 74, -28, 28);
-    const ay = clamp(vy * 74, -24, 24);
-    const started = performance.now();
-    const duration = 430;
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - started) / duration);
-      const decay = Math.exp(-4.6 * t);
-      const swing = Math.cos(t * Math.PI * 2.45);
-      setCableMotion({ frameId, x: ax * decay * swing, y: ay * decay * swing });
-      if (t < 1) requestAnimationFrame(tick);
-      else setCableMotion(null);
-    };
-    requestAnimationFrame(tick);
-  }, [reducedMotion]);
+      <div ref={stageRef} className={`stage${wire?' connecting':''}`} onPointerDown={onStagePointerDown} onPointerMove={onStagePointerMove} onPointerUp={endPan} onPointerCancel={endPan} onWheel={onWheel}><div className={`world${scale<.58?' zoom-far':''}`} style={{width:worldWidth,height:worldHeight,transform:`scale(${scale})`}}>
+        <svg className="connections" width={worldWidth} height={worldHeight}>{framework.connections.map(connection=>{const source=frameMap.get(connection.fromFrame),target=frameMap.get(connection.toFrame);if(!source||!target||!visibleIds.has(source.id)||!visibleIds.has(target.id))return null;const semantic=connection.kind==='semantic',sourceIndex=Math.max(0,source.outputs.findIndex(port=>port.id===connection.fromPort)),targetIndex=Math.max(0,target.inputs.findIndex(port=>port.id===connection.toPort)),start=semantic?semanticPoint(source,'from'):portCenter(source,'out',sourceIndex),end=semantic?semanticPoint(target,'to'):portCenter(target,'in',targetIndex),geometry=curveGeometry(start,end,cableMotion?.frameId===source.id?cableMotion:undefined,cableMotion?.frameId===target.id?cableMotion:undefined),selected=selectedConnectionId===connection.id,targetStep=stepMap.get(target.id),executing=!semantic&&(run?.activeFrameIds?.includes(target.id)||run?.activeFrameId===target.id),inactive=Boolean(connection.condition&&targetStep?.status==='skipped'),classes=['connection-group',semantic?'semantic':'execution',connection.chainType?`chain-${connection.chainType}`:'',connection.isFeedback?'feedback':'',selected?'selected':'',newConnectionId===connection.id?'just-connected':'',removingConnectionId===connection.id?'removing':'',executing?'executing':'',inactive?'inactive-route':''].filter(Boolean).join(' ');return <g key={connection.id} className={classes} data-chain-id={connection.chainId??undefined}><path className="connection-halo" d={geometry.d} pathLength="1"/><path className="connection-main" d={geometry.d} pathLength="1"/><path className="connection-hit" data-connection-hit={connection.id} d={geometry.d} onPointerDown={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();setSelectedConnectionId(connection.id);if(connection.chainId){const chain=(framework.chains??[]).find(item=>item.id===connection.chainId);if(chain){setSelectedChainId(chain.id);setSelectedFrameIds(chain.frameIds);setSideMode('chain');}}else{setSelectedFrameIds([]);setSelectedChainId(null);}}}/>{selected&&<text className="connection-label" x={geometry.mid.x} y={geometry.mid.y-9} textAnchor="middle">{semantic?label(connection.meaning??'depends-on'):connection.chainType?`${label(connection.chainType)} · ${label(connection.executionMode??'sequential')}`:label(connection.meaning??'feeds')}</text>}{selected&&<g className="connection-remove" data-remove-connection={connection.id} transform={`translate(${geometry.mid.x} ${geometry.mid.y})`} onPointerDown={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();removeConnection(connection.id);}}><circle r="12"/><path d="M -4 -4 L 4 4 M 4 -4 L -4 4"/></g>}</g>;})}{wire&&<path className="wire-live" d={curveGeometry({x:wire.x1,y:wire.y1},{x:wire.x2,y:wire.y2}).d}/>} {wire&&<circle className="wire-tip" cx={wire.x2} cy={wire.y2} r="5"/>}</svg>
+        <div className="frames">{visibleFrames.map(frame=>{const step=stepMap.get(frame.id),active=Boolean(run?.activeFrameIds?.includes(frame.id)||run?.activeFrameId===frame.id),selected=selectedFrameIds.includes(frame.id),body=active?'Running…':step&&completedStep(step.status)?short(step.output):step?.status==='error'?'Execution stopped':frame.kind==='asset'?short(frame.value):frame.body||'',meta=active?'RUNNING':step?`${label(step.status)} · ${step.durationMs}ms`:frame.controlState&&frame.controlState!=='active'?label(frame.controlState):frame.epistemicState?label(frame.epistemicState):frame.outputs[0]?.type??'result',children=childrenByParent.get(frame.id)??[],parent=frame.parentId?frameMap.get(frame.parentId):undefined;return <div key={frame.id} data-frame={frame.id} className={`frame frame-${frame.kind}${selected?' selected':''}${active?' run-active':''}${step?.status==='ok'||step?.status==='cached'?' run-ok':''}${step?.status==='error'?' run-error':''}${frame.controlState==='disabled'?' frame-disabled':''}${frame.controlState==='bypass'?' frame-bypassed':''}`} style={{width:FRAME_WIDTH,height:FRAME_HEIGHT,left:frame.x,top:frame.y}} onPointerDown={event=>onFramePointerDown(event,frame)} onPointerMove={onFramePointerMove} onPointerUp={onFramePointerUp} onDoubleClick={()=>{setSelectedFrameIds([frame.id]);setSelectedChainId(null);setSideMode('frame');}}><div className="frame-index">{label(frame.role??KIND_LABELS[frame.kind])}</div><div className="frame-title">{frame.title}</div><div className="frame-body">{body}</div><div className="frame-meta"><span>{meta}</span><span>{frame.operation==='MODEL'?'ONLINE':'LOCAL'}</span></div>{parent&&<span className="frame-parent">inside {parent.title}</span>}{children.length>0&&<button className="frame-collapse" onClick={event=>{event.stopPropagation();toggleCollapsed(frame.id);}}>{frame.collapsed?`+${children.length}`:`−${children.length}`}</button>}{frame.inputs.map((port,index)=><button key={port.id} data-port="in" data-frame-id={frame.id} data-port-id={port.id} title={`${port.name}: ${port.type}`} className={`port port-in${wire?compatible(wire.outputType,port.type)&&wire.fromFrame!==frame.id?' can-connect':' cannot-connect':''}`} style={{top:54+index*22}} onPointerDown={event=>event.stopPropagation()}/>)}{frame.outputs.map((port,index)=><button key={port.id} data-port="out" data-frame-id={frame.id} data-port-id={port.id} title={`${port.name}: ${port.type}`} className="port port-out" style={{top:54+index*22}} onPointerDown={event=>startWire(event,frame,port,index)}/>)}</div>;})}</div>
+        <div className="canvas-hint"><span>Drag space to move</span><i/><span>Shift selects more</span><i/><span>Select 2+ → Chain</span><i/><span>Ctrl scroll zooms</span></div>
+      </div></div>
+    </section>
 
-  const settleFrame = useCallback((frameId: string, vx: number, vy: number) => {
-    if (reducedMotion) return;
-    const element = document.querySelector<HTMLElement>(`[data-frame="${frameId}"]`);
-    if (!element?.animate) return;
-    const speed = Math.min(1, Math.hypot(vx, vy) * 1.8);
-    const lift = 1.006 + speed * 0.008;
-    element.animate([
-      { transform: 'scale(1)', offset: 0 },
-      { transform: `scale(${lift})`, offset: 0.36 },
-      { transform: 'scale(.997)', offset: 0.72 },
-      { transform: 'scale(1)', offset: 1 }
-    ], { duration: 230, easing: 'cubic-bezier(.2,.78,.22,1)' });
-  }, [reducedMotion]);
-
-  const onFramePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>, frame: Frame) => {
-    if ((event.target as HTMLElement).closest('button,input,textarea,select,[data-port]')) return;
-    event.stopPropagation();
-    const additive = event.shiftKey || event.metaKey || event.ctrlKey;
-    let selection = selectedFrameIds;
-    if (!selection.includes(frame.id)) selection = additive ? [...selection, frame.id] : [frame.id];
-    setSelectedFrameIds(selection);
-    setSelectedConnectionId(null);
-    setSideMode('frame');
-    const stage = stageRef.current;
-    if (!stage) return;
-    const rect = stage.getBoundingClientRect();
-    const startWorldX = (event.clientX - rect.left + stage.scrollLeft) / scale;
-    const startWorldY = (event.clientY - rect.top + stage.scrollTop) / scale;
-    const startPositions: Record<string, { x: number; y: number }> = {};
-    for (const id of selection) {
-      const item = frameworkRef.current.frames.find(candidate => candidate.id === id);
-      if (item) startPositions[id] = { x: item.x, y: item.y };
-    }
-    dragRef.current = {
-      pointerId: event.pointerId,
-      frameIds: selection,
-      startWorldX,
-      startWorldY,
-      startPositions,
-      before: clone(frameworkRef.current),
-      lastX: event.clientX,
-      lastY: event.clientY,
-      lastT: performance.now(),
-      vx: 0,
-      vy: 0,
-      moved: false
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }, [scale, selectedFrameIds]);
-
-  const autoPan = useCallback((clientX: number, clientY: number) => {
-    const stage = stageRef.current;
-    if (!stage) return;
-    const rect = stage.getBoundingClientRect();
-    const edge = 72;
-    const speed = 14;
-    let dx = 0;
-    let dy = 0;
-    if (clientX < rect.left + edge) dx = -speed;
-    else if (clientX > rect.right - edge) dx = speed;
-    if (clientY < rect.top + edge) dy = -speed;
-    else if (clientY > rect.bottom - edge) dy = speed;
-    if (dx || dy) stage.scrollBy(dx, dy);
-  }, []);
-
-  const onFramePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    const stage = stageRef.current;
-    if (!drag || drag.pointerId !== event.pointerId || !stage) return;
-    autoPan(event.clientX, event.clientY);
-    const rect = stage.getBoundingClientRect();
-    const worldX = (event.clientX - rect.left + stage.scrollLeft) / scale;
-    const worldY = (event.clientY - rect.top + stage.scrollTop) / scale;
-    const dx = worldX - drag.startWorldX;
-    const dy = worldY - drag.startWorldY;
-    if (Math.abs(dx) + Math.abs(dy) > 1) drag.moved = true;
-    const now = performance.now();
-    const dt = Math.max(8, now - drag.lastT);
-    const ivx = (event.clientX - drag.lastX) / (dt * scale);
-    const ivy = (event.clientY - drag.lastY) / (dt * scale);
-    drag.vx = drag.vx * 0.62 + ivx * 0.38;
-    drag.vy = drag.vy * 0.62 + ivy * 0.38;
-    drag.lastX = event.clientX;
-    drag.lastY = event.clientY;
-    drag.lastT = now;
-    changeFramework(current => ({
-      ...current,
-      frames: current.frames.map(item => {
-        const start = drag.startPositions[item.id];
-        return start ? { ...item, x: Math.max(16, start.x + dx), y: Math.max(16, start.y + dy) } : item;
-      })
-    }), { save: false, record: false });
-  }, [autoPan, changeFramework, scale]);
-
-  const onFramePointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    dragRef.current = null;
-    if (drag.moved) {
-      recordHistory(drag.before, drag.frameIds.length > 1 ? 'Move Frames' : 'Move Frame');
-      persist(frameworkRef.current, 0);
-    }
-    const idleFor = performance.now() - drag.lastT;
-    const decay = idleFor > 85 ? 0.25 : 1;
-    const vx = drag.vx * decay;
-    const vy = drag.vy * decay;
-    for (const id of drag.frameIds) {
-      settleFrame(id, vx, vy);
-      startCableFollowThrough(id, vx, vy);
-    }
-  }, [persist, recordHistory, settleFrame, startCableFollowThrough]);
-
-  const startWire = useCallback((event: React.PointerEvent<HTMLButtonElement>, frame: Frame, port: Port, portIndex: number) => {
-    event.stopPropagation();
-    event.preventDefault();
-    const point = portCenter(frame, 'out', portIndex);
-    const next: WireState = { fromFrame: frame.id, fromPort: port.id, outputType: port.type, x1: point.x, y1: point.y, x2: point.x, y2: point.y };
-    wireRef.current = next;
-    setWire(next);
-    setSelectedConnectionId(null);
-    setStatus('CONNECT');
-  }, []);
-
-  const nearestCompatiblePort = useCallback((clientX: number, clientY: number, activeWire: WireState) => {
-    const candidates = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-port="in"]'));
-    let best: { frameId: string; portId: string; distance: number } | null = null;
-    const source = frameMap.get(activeWire.fromFrame);
-    if (!source) return null;
-    for (const element of candidates) {
-      const frameId = element.dataset.frameId;
-      const portId = element.dataset.portId;
-      if (!frameId || !portId || frameId === source.id) continue;
-      const frame = frameMap.get(frameId);
-      const input = frame?.inputs.find(port => port.id === portId);
-      if (!frame || !input || !compatible(activeWire.outputType, input.type)) continue;
-      const rect = element.getBoundingClientRect();
-      const px = rect.left + rect.width / 2;
-      const py = rect.top + rect.height / 2;
-      const distance = Math.hypot(clientX - px, clientY - py);
-      if (distance <= 38 && (!best || distance < best.distance)) best = { frameId, portId, distance };
-    }
-    return best;
-  }, [frameMap]);
-
-  useEffect(() => {
-    const onMove = (event: PointerEvent) => {
-      const active = wireRef.current;
-      const stage = stageRef.current;
-      if (!active || !stage) return;
-      autoPan(event.clientX, event.clientY);
-      const rect = stage.getBoundingClientRect();
-      const next = {
-        ...active,
-        x2: (event.clientX - rect.left + stage.scrollLeft) / scale,
-        y2: (event.clientY - rect.top + stage.scrollTop) / scale
-      };
-      wireRef.current = next;
-      setWire(next);
-    };
-    const onUp = (event: PointerEvent) => {
-      const active = wireRef.current;
-      if (!active) return;
-      const target = nearestCompatiblePort(event.clientX, event.clientY, active);
-      if (target) {
-        const id = `e-${Date.now()}`;
-        const createdAt = new Date().toISOString();
-        changeFramework(current => ({
-          ...current,
-          version: (current.version ?? 1) + 1,
-          updatedAt: createdAt,
-          connections: [
-            ...current.connections.filter(connection => connection.kind === 'semantic' || !(connection.toFrame === target.frameId && connection.toPort === target.portId)),
-            { id, fromFrame: active.fromFrame, fromPort: active.fromPort, toFrame: target.frameId, toPort: target.portId, kind: 'execution', meaning: 'feeds', provenance: { origin: 'user', createdAt } }
-          ]
-        }), { label: 'Connect Frames' });
-        setNewConnectionId(id);
-        window.setTimeout(() => setNewConnectionId(null), 340);
-        setRun(null);
-      }
-      wireRef.current = null;
-      setWire(null);
-      setStatus('READY');
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
-    };
-  }, [autoPan, changeFramework, nearestCompatiblePort, scale]);
-
-  const removeConnection = useCallback((id: string) => {
-    if (removingConnectionId) return;
-    const remove = () => {
-      changeFramework(current => ({
-        ...current,
-        version: (current.version ?? 1) + 1,
-        connections: current.connections.filter(connection => connection.id !== id),
-        updatedAt: new Date().toISOString()
-      }), { label: 'Remove Connection' });
-      setSelectedConnectionId(null);
-      setRemovingConnectionId(null);
-      setRun(null);
-    };
-    if (reducedMotion) remove();
-    else {
-      setRemovingConnectionId(id);
-      window.setTimeout(remove, 250);
-    }
-  }, [changeFramework, reducedMotion, removingConnectionId]);
-
-  const connectMeaning = useCallback(() => {
-    if (selectedFrameIds.length !== 2) return;
-    const [fromFrame, toFrame] = selectedFrameIds;
-    if (fromFrame === toFrame) return;
-    const createdAt = new Date().toISOString();
-    changeFramework(current => ({
-      ...current,
-      version: (current.version ?? 1) + 1,
-      updatedAt: createdAt,
-      connections: [...current.connections, {
-        id: `semantic-${Date.now()}`,
-        fromFrame,
-        fromPort: '',
-        toFrame,
-        toPort: '',
-        kind: 'semantic',
-        meaning: relationshipMeaning,
-        provenance: { origin: 'user', createdAt }
-      }]
-    }), { label: 'Add Meaning Relationship' });
-  }, [changeFramework, relationshipMeaning, selectedFrameIds]);
-
-  const containSelection = useCallback(() => {
-    if (selectedFrameIds.length < 2 || !selectedFrameId) return;
-    const parentId = selectedFrameId;
-    const childIds = selectedFrameIds.filter(id => id !== parentId);
-    const createdAt = new Date().toISOString();
-    changeFramework(current => {
-      const existing = new Set(current.connections.filter(connection => connection.meaning === 'contains').map(connection => `${connection.fromFrame}:${connection.toFrame}`));
-      const additions = childIds.filter(id => !existing.has(`${parentId}:${id}`)).map((id, index) => ({
-        id: `contains-${Date.now()}-${index}`,
-        fromFrame: parentId,
-        fromPort: '',
-        toFrame: id,
-        toPort: '',
-        kind: 'semantic' as const,
-        meaning: 'contains' as const,
-        provenance: { origin: 'user' as const, createdAt }
-      }));
-      return {
-        ...current,
-        version: (current.version ?? 1) + 1,
-        updatedAt: createdAt,
-        frames: current.frames.map(frame => childIds.includes(frame.id) ? { ...frame, parentId } : frame),
-        connections: [...current.connections, ...additions]
-      };
-    }, { label: 'Create Hierarchy' });
-  }, [changeFramework, selectedFrameId, selectedFrameIds]);
-
-  const releaseFromParent = useCallback(() => {
-    if (!selectedFrameIds.length) return;
-    const ids = new Set(selectedFrameIds);
-    const parentPairs = new Set(frameworkRef.current.frames.filter(frame => ids.has(frame.id) && frame.parentId).map(frame => `${frame.parentId}:${frame.id}`));
-    changeFramework(current => ({
-      ...current,
-      version: (current.version ?? 1) + 1,
-      updatedAt: new Date().toISOString(),
-      frames: current.frames.map(frame => ids.has(frame.id) ? { ...frame, parentId: undefined } : frame),
-      connections: current.connections.filter(connection => !(connection.meaning === 'contains' && parentPairs.has(`${connection.fromFrame}:${connection.toFrame}`)))
-    }), { label: 'Release Hierarchy' });
-  }, [changeFramework, selectedFrameIds]);
-
-  const toggleCollapsed = useCallback((frameId: string) => {
-    const item = frameMap.get(frameId);
-    if (!item) return;
-    updateFrame(frameId, { collapsed: !item.collapsed });
-  }, [frameMap, updateFrame]);
-
-  const branchIds = useCallback((rootId: string) => {
-    const found = new Set<string>([rootId]);
-    const queue = [rootId];
-    while (queue.length) {
-      const current = queue.shift()!;
-      for (const connection of frameworkRef.current.connections) {
-        if (connection.fromFrame !== current || found.has(connection.toFrame)) continue;
-        found.add(connection.toFrame);
-        queue.push(connection.toFrame);
-      }
-      for (const child of frameworkRef.current.frames.filter(frame => frame.parentId === current)) {
-        if (!found.has(child.id)) {
-          found.add(child.id);
-          queue.push(child.id);
-        }
-      }
-    }
-    return [...found];
-  }, []);
-
-  const currentScope = useCallback((): FrameworkScope => {
-    if (scopeMode === 'framework') return { kind: 'framework', frameIds: frameworkRef.current.frames.map(frame => frame.id) };
-    if (scopeMode === 'selection') return { kind: 'selection', frameIds: selectedFrameIds.length ? selectedFrameIds : frameworkRef.current.frames.map(frame => frame.id) };
-    if (scopeMode === 'branch' && selectedFrameId) return { kind: 'branch', frameIds: branchIds(selectedFrameId) };
-    return { kind: 'frame', frameIds: selectedFrameId ? [selectedFrameId] : frameworkRef.current.frames.slice(0, 1).map(frame => frame.id) };
-  }, [branchIds, scopeMode, selectedFrameId, selectedFrameIds]);
-
-  const runStructuralOperation = useCallback(async (operation: StructuralOperation) => {
-    setStatus('THINKING');
-    try {
-      const proposal = await requestStructuralProposal(frameworkRef.current, currentScope(), operation);
-      changeFramework(current => ({
-        ...current,
-        proposals: [...(current.proposals ?? []).filter(item => item.id !== proposal.id), proposal],
-        updatedAt: new Date().toISOString()
-      }), { record: false });
-      setSideMode('proposal');
-      setStatus('PROPOSAL');
-    } catch (error) {
-      setStatus('STOPPED');
-      console.error(error);
-    }
-  }, [changeFramework, currentScope]);
-
-  const acceptActiveProposal = useCallback(async () => {
-    if (!activeProposal) return;
-    if (activeProposal.operation === 'compress') {
-      const acceptedSource = {
-        ...frameworkRef.current,
-        proposals: [...(frameworkRef.current.proposals ?? []).filter(item => item.id !== activeProposal.id), { ...activeProposal, status: 'accepted' as const }],
-        updatedAt: new Date().toISOString()
-      };
-      await saveFramework(acceptedSource);
-      const compressed = proposalToFramework(acceptedSource, activeProposal);
-      await saveFramework(compressed);
-      await setActiveFrameworkId(compressed.id);
-      frameworkRef.current = compressed;
-      setFramework(compressed);
-      setSelectedFrameIds(compressed.frames[0]?.id ? [compressed.frames[0].id] : []);
-      pastRef.current = [];
-      futureRef.current = [];
-      setHistoryTick(value => value + 1);
-      setRun(null);
-      setSideMode('framework');
-      await refreshLists(compressed.id);
-      setStatus('READY');
-      return;
-    }
-    changeFramework(current => applyProposal(current, activeProposal), { label: `Accept ${activeProposal.operation}` });
-    setSideMode('frame');
-    setStatus('READY');
-  }, [activeProposal, changeFramework, refreshLists]);
-
-  const rejectActiveProposal = useCallback(() => {
-    if (!activeProposal) return;
-    changeFramework(current => rejectProposal(current, activeProposal), { record: false });
-    setSideMode('frame');
-    setStatus('READY');
-  }, [activeProposal, changeFramework]);
-
-  const organizeGoal = useCallback((goal: FrameworkGoal) => {
-    changeFramework(current => reorganizeForGoal(current, goal), { label: `Organize for ${goal}` });
-    setRun(null);
-    requestAnimationFrame(() => fitView());
-  }, [changeFramework]);
-
-  const mergeSingleRun = useCallback((previous: FrameworkRun | null, single: FrameworkRun) => {
-    const merged = new Map((previous?.steps ?? []).filter(step => frameworkRef.current.frames.some(frame => frame.id === step.frameId)).map(step => [step.frameId, step]));
-    for (const step of single.steps) merged.set(step.frameId, step);
-    return { ...single, steps: [...merged.values()] };
-  }, []);
-
-  const executeSelected = useCallback(async () => {
-    if (!selectedFrameId) return;
-    setStatus('RUNNING');
-    const single = await runSingleFrame(frameworkRef.current, selectedFrameId, run);
-    const merged = mergeSingleRun(run, single);
-    setRun(merged);
-    setStatus(single.status === 'ok' ? 'PASSED' : 'STOPPED');
-    await saveRun(single).catch(() => undefined);
-    setRuns(await listRuns(frameworkRef.current.id).catch(() => []));
-  }, [mergeSingleRun, run, selectedFrameId]);
-
-  const executeAll = useCallback(async () => {
-    setStatus('RUNNING');
-    const running: FrameworkRun = {
-      id: `run-${Date.now()}`, frameworkId: frameworkRef.current.id, status: 'running', startedAt: new Date().toISOString(), activeFrameId: null, steps: []
-    };
-    setRun(running);
-    const final = await runFramework(frameworkRef.current, event => setRun(event.run));
-    setRun(final);
-    setStatus(final.status === 'ok' ? 'PASSED' : 'STOPPED');
-    await saveRun(final).catch(() => undefined);
-    setRuns(await listRuns(frameworkRef.current.id).catch(() => []));
-  }, []);
-
-  const switchFramework = useCallback(async (id: string) => {
-    if (id === frameworkRef.current.id) return;
-    await saveFramework(frameworkRef.current).catch(() => undefined);
-    await setActiveFrameworkId(id);
-    const next = await loadFramework(id);
-    frameworkRef.current = next;
-    setFramework(next);
-    setSelectedFrameIds(next.frames[0]?.id ? [next.frames[0].id] : []);
-    setSelectedConnectionId(null);
-    setRun(null);
-    setScale(1);
-    pastRef.current = [];
-    futureRef.current = [];
-    setHistoryTick(value => value + 1);
-    setSideMode('framework');
-    await refreshLists(next.id);
-  }, [refreshLists]);
-
-  const reset = useCallback(() => {
-    const seed = createSeedFramework();
-    recordHistory(frameworkRef.current, 'Reset Framework');
-    frameworkRef.current = seed;
-    setFramework(seed);
-    setSelectedFrameIds(['instruction-1']);
-    setSelectedConnectionId(null);
-    setRun(null);
-    setScale(1);
-    setCableMotion(null);
-    setStatus('READY');
-    saveFramework(seed).catch(() => undefined);
-  }, [recordHistory]);
-
-  const fitView = useCallback(() => {
-    const stage = stageRef.current;
-    if (!stage || !visibleFrames.length) return;
-    const minX = Math.min(...visibleFrames.map(frame => frame.x));
-    const minY = Math.min(...visibleFrames.map(frame => frame.y));
-    const maxX = Math.max(...visibleFrames.map(frame => frame.x + FRAME_WIDTH));
-    const maxY = Math.max(...visibleFrames.map(frame => frame.y + FRAME_HEIGHT));
-    const width = Math.max(1, maxX - minX);
-    const height = Math.max(1, maxY - minY);
-    const padding = 90;
-    const next = clamp(Math.min((stage.clientWidth - padding * 2) / width, (stage.clientHeight - padding * 2) / height), 0.35, 1.35);
-    setScale(next);
-    requestAnimationFrame(() => {
-      stage.scrollLeft = Math.max(0, (minX + width / 2) * next - stage.clientWidth / 2);
-      stage.scrollTop = Math.max(0, (minY + height / 2) * next - stage.clientHeight / 2);
-    });
-  }, [visibleFrames]);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement;
-      if (target.matches('input,textarea,select')) return;
-      const command = event.metaKey || event.ctrlKey;
-      const key = event.key.toLowerCase();
-      if (command && key === 'z') {
-        event.preventDefault();
-        if (event.shiftKey) redo(); else undo();
-        return;
-      }
-      if (command && key === 'c') { event.preventDefault(); copySelection(); return; }
-      if (command && key === 'v') { event.preventDefault(); pasteSelection(); return; }
-      if (command && key === 'd') { event.preventDefault(); duplicateSelection(); return; }
-      if (command && key === 'r') { event.preventDefault(); void executeAll(); return; }
-      const kinds: Record<string, FrameKind> = { '1': 'asset', '2': 'instruction', '3': 'expression', '4': 'check', '5': 'output' };
-      if (kinds[event.key]) addFrame(kinds[event.key]);
-      if (event.key === 'Delete' || event.key === 'Backspace') {
-        if (selectedConnectionId) removeConnection(selectedConnectionId);
-        else deleteSelection();
-      }
-      if (event.key === 'Escape') {
-        setSelectedFrameIds([]);
-        setSelectedConnectionId(null);
-        wireRef.current = null;
-        setWire(null);
-        setStatus('READY');
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [addFrame, copySelection, deleteSelection, duplicateSelection, executeAll, pasteSelection, redo, removeConnection, selectedConnectionId, undo]);
-
-  const onStagePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const target = event.target as HTMLElement;
-    if (target.closest('[data-frame],[data-port],[data-connection-hit],[data-remove-connection]') || wireRef.current) return;
-    if (event.button !== 0 && event.button !== 1) return;
-    const stage = stageRef.current;
-    if (!stage) return;
-    if (!(event.shiftKey || event.metaKey || event.ctrlKey)) setSelectedFrameIds([]);
-    setSelectedConnectionId(null);
-    panRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: stage.scrollLeft, top: stage.scrollTop };
-    stage.classList.add('panning');
-    stage.setPointerCapture(event.pointerId);
-  }, []);
-
-  const onStagePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const pan = panRef.current;
-    const stage = stageRef.current;
-    if (!pan || pan.pointerId !== event.pointerId || !stage) return;
-    stage.scrollLeft = pan.left - (event.clientX - pan.x);
-    stage.scrollTop = pan.top - (event.clientY - pan.y);
-  }, []);
-  const endPan = useCallback(() => {
-    panRef.current = null;
-    stageRef.current?.classList.remove('panning');
-  }, []);
-
-  const onWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
-    if (!(event.ctrlKey || event.metaKey)) return;
-    event.preventDefault();
-    const stage = stageRef.current;
-    if (!stage) return;
-    const old = scale;
-    const next = clamp(+(old + (event.deltaY < 0 ? 0.08 : -0.08)).toFixed(2), 0.35, 1.6);
-    if (next === old) return;
-    const rect = stage.getBoundingClientRect();
-    const sx = event.clientX - rect.left;
-    const sy = event.clientY - rect.top;
-    const worldX = (stage.scrollLeft + sx) / old;
-    const worldY = (stage.scrollTop + sy) / old;
-    setScale(next);
-    requestAnimationFrame(() => {
-      stage.scrollLeft = worldX * next - sx;
-      stage.scrollTop = worldY * next - sy;
-    });
-  }, [scale]);
-
-  const connectionCount = framework.connections.length;
-  const proposalCount = framework.proposals?.filter(item => item.status === 'pending').length ?? 0;
-  void historyTick;
-
-  if (!loaded) return <div className="boot">Visual Framework</div>;
-
-  return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div className="brand"><span className="brand-mark">VF</span><span className="brand-name">Visual Framework</span></div>
-        <div className="top-actions">
-          <span className={`status status-${status.toLowerCase()}`}><i /><b>{status}</b></span>
-          <button className="text-btn" onClick={undo} disabled={!pastRef.current.length}>Undo</button>
-          <button className="text-btn" onClick={redo} disabled={!futureRef.current.length}>Redo</button>
-          <button className="text-btn" onClick={() => setSideMode('issues')}>Issues {lintIssues.length + executionIssues.length}</button>
-          <button className="text-btn" onClick={() => setSideMode('runs')}>Runs {runs.length}</button>
-          <button className="text-btn" onClick={reset}>Reset</button>
-          <button className="run-button" onClick={() => void executeAll()} disabled={status === 'RUNNING' || status === 'THINKING'}><span>Run</span><kbd>⌘R</kbd></button>
-        </div>
-      </header>
-
-      <aside className="tool-rail" aria-label="Add to framework">
-        <div className="tool-caption">ADD</div>
-        {([
-          ['asset', '◆', 'Data', '1'],
-          ['instruction', '→', 'Step', '2'],
-          ['expression', 'ƒ', 'Logic', '3'],
-          ['check', '✓', 'Check', '4'],
-          ['output', '□', 'Result', '5']
-        ] as const).map(([kind, glyph, toolLabel, key]) => (
-          <button key={kind} className="tool" onClick={() => addFrame(kind)}>
-            <span className="tool-glyph">{glyph}</span><span className="tool-label">{toolLabel}</span><span className="tool-key">{key}</span>
-          </button>
-        ))}
-        <div className="rail-divider" />
-        <button className="tool compact" onClick={duplicateSelection} disabled={!selectedFrameIds.length}><span className="tool-glyph">⧉</span><span className="tool-label">Duplicate</span></button>
-        <button className="tool compact" onClick={fitView}><span className="tool-glyph">⌗</span><span className="tool-label">Fit</span></button>
-      </aside>
-
-      <section className="workspace">
-        <div className="workspace-head">
-          <div className="framework-heading">
-            <select className="framework-switch" value={framework.id} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => void switchFramework(event.target.value)}>
-              {frameworkList.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-              {!frameworkList.some(item => item.id === framework.id) && <option value={framework.id}>{framework.name}</option>}
-            </select>
-            <span>{framework.frames.length} frames · {connectionCount} links</span>
-            {selectedFrameIds.length > 1 && <b className="selection-count">{selectedFrameIds.length} selected</b>}
-          </div>
-          <div className="workspace-controls">
-            {selectedFrameIds.length === 2 && <>
-              <select className="relation-select" value={relationshipMeaning} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setRelationshipMeaning(event.target.value as RelationshipMeaning)}>
-                {RELATIONSHIPS.map(item => <option key={item} value={item}>{label(item)}</option>)}
-              </select>
-              <button className="quiet-action" onClick={connectMeaning}>Relate</button>
-            </>}
-            <button className="quiet-action" onClick={fitView}>Fit</button>
-            <div className="zoom"><button onClick={() => setScale(value => clamp(+(value - 0.1).toFixed(2), 0.35, 1.6))}>−</button><span>{Math.round(scale * 100)}%</span><button onClick={() => setScale(value => clamp(+(value + 0.1).toFixed(2), 0.35, 1.6))}>+</button></div>
-          </div>
-        </div>
-
-        <div className="structure-bar">
-          <div className="scope-control"><span>SCOPE</span><select value={scopeMode} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setScopeMode(event.target.value as ScopeMode)}><option value="frame">Frame</option><option value="selection">Selection</option><option value="branch">Branch</option><option value="framework">Framework</option></select></div>
-          <div className="structure-actions">
-            {STRUCTURAL_OPERATIONS.map(([operation, operationLabel]) => <button key={operation} onClick={() => void runStructuralOperation(operation)} disabled={status === 'THINKING' || status === 'RUNNING'}>{operationLabel}</button>)}
-          </div>
-          <div className="goal-control"><span>GOAL</span><select value={framework.goal ?? 'understand'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => organizeGoal(event.target.value as FrameworkGoal)}>{GOALS.map(goal => <option key={goal} value={goal}>{label(goal)}</option>)}</select></div>
-        </div>
-
-        <div
-          ref={stageRef}
-          className={`stage${wire ? ' connecting' : ''}`}
-          onPointerDown={onStagePointerDown}
-          onPointerMove={onStagePointerMove}
-          onPointerUp={endPan}
-          onPointerCancel={endPan}
-          onWheel={onWheel}
-        >
-          <div className={`world${scale < 0.58 ? ' zoom-far' : ''}`} style={{ width: worldWidth, height: worldHeight, transform: `scale(${scale})` }}>
-            <svg className="connections" width={worldWidth} height={worldHeight}>
-              {framework.connections.map(connection => {
-                const source = frameMap.get(connection.fromFrame);
-                const target = frameMap.get(connection.toFrame);
-                if (!source || !target || !visibleIds.has(source.id) || !visibleIds.has(target.id)) return null;
-                const semantic = connection.kind === 'semantic';
-                const sourceIndex = Math.max(0, source.outputs.findIndex(port => port.id === connection.fromPort));
-                const targetIndex = Math.max(0, target.inputs.findIndex(port => port.id === connection.toPort));
-                const start = semantic ? semanticPoint(source, 'from') : portCenter(source, 'out', sourceIndex);
-                const end = semantic ? semanticPoint(target, 'to') : portCenter(target, 'in', targetIndex);
-                const sourceMotion = cableMotion?.frameId === source.id ? cableMotion : undefined;
-                const targetMotion = cableMotion?.frameId === target.id ? cableMotion : undefined;
-                const geometry = curveGeometry(start, end, sourceMotion, targetMotion);
-                const selected = selectedConnectionId === connection.id;
-                const executing = !semantic && run?.activeFrameId === target.id;
-                const classes = ['connection-group', semantic ? 'semantic' : 'execution', selected ? 'selected' : '', newConnectionId === connection.id ? 'just-connected' : '', removingConnectionId === connection.id ? 'removing' : '', executing ? 'executing' : ''].filter(Boolean).join(' ');
-                return (
-                  <g key={connection.id} className={classes}>
-                    <path className="connection-halo" d={geometry.d} pathLength="1" />
-                    <path className="connection-main" d={geometry.d} pathLength="1" />
-                    <path
-                      className="connection-hit"
-                      data-connection-hit={connection.id}
-                      d={geometry.d}
-                      onPointerDown={(event: React.PointerEvent<SVGPathElement>) => event.stopPropagation()}
-                      onClick={(event: React.MouseEvent<SVGPathElement>) => { event.stopPropagation(); setSelectedFrameIds([]); setSelectedConnectionId(connection.id); }}
-                    />
-                    {selected && semantic && <text className="connection-label" x={geometry.mid.x} y={geometry.mid.y - 9} textAnchor="middle">{label(connection.meaning ?? 'depends-on')}</text>}
-                    {selected && (
-                      <g
-                        className="connection-remove"
-                        data-remove-connection={connection.id}
-                        transform={`translate(${geometry.mid.x} ${geometry.mid.y})`}
-                        onPointerDown={(event: React.PointerEvent<SVGGElement>) => event.stopPropagation()}
-                        onClick={(event: React.MouseEvent<SVGGElement>) => { event.stopPropagation(); removeConnection(connection.id); }}
-                      >
-                        <circle r="12" /><path d="M -4 -4 L 4 4 M 4 -4 L -4 4" />
-                      </g>
-                    )}
-                  </g>
-                );
-              })}
-              {wire && <path className="wire-live" d={curveGeometry({ x: wire.x1, y: wire.y1 }, { x: wire.x2, y: wire.y2 }).d} />}
-              {wire && <circle className="wire-tip" cx={wire.x2} cy={wire.y2} r="5" />}
-            </svg>
-
-            <div className="frames">
-              {visibleFrames.map(frame => {
-                const step = stepMap.get(frame.id);
-                const active = run?.activeFrameId === frame.id;
-                const selected = selectedFrameIds.includes(frame.id);
-                const body = active ? 'Running…' : step?.status === 'ok' ? short(step.output) : step?.status === 'error' ? 'Execution stopped' : frame.kind === 'asset' ? short(frame.value) : frame.body || '';
-                const meta = active ? 'RUNNING' : step ? `${step.durationMs}ms` : frame.epistemicState ? label(frame.epistemicState) : frame.outputs[0]?.type ?? 'result';
-                const children = childrenByParent.get(frame.id) ?? [];
-                const parent = frame.parentId ? frameMap.get(frame.parentId) : undefined;
-                return (
-                  <div
-                    key={frame.id}
-                    data-frame={frame.id}
-                    className={`frame frame-${frame.kind}${selected ? ' selected' : ''}${active ? ' run-active' : ''}${step?.status === 'ok' ? ' run-ok' : ''}${step?.status === 'error' ? ' run-error' : ''}`}
-                    style={{ width: FRAME_WIDTH, height: FRAME_HEIGHT, left: frame.x, top: frame.y }}
-                    onPointerDown={event => onFramePointerDown(event, frame)}
-                    onPointerMove={onFramePointerMove}
-                    onPointerUp={onFramePointerUp}
-                    onDoubleClick={() => { setSelectedFrameIds([frame.id]); setSideMode('frame'); }}
-                  >
-                    <div className="frame-index">{label(frame.role ?? KIND_LABELS[frame.kind])}</div>
-                    <div className="frame-title">{frame.title}</div>
-                    <div className="frame-body">{body}</div>
-                    <div className="frame-meta"><span>{meta}</span><span>{frame.operation === 'MODEL' ? 'ONLINE' : 'LOCAL'}</span></div>
-                    {parent && <span className="frame-parent">inside {parent.title}</span>}
-                    {children.length > 0 && <button className="frame-collapse" onClick={(event: React.MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); toggleCollapsed(frame.id); }}>{frame.collapsed ? `+${children.length}` : `−${children.length}`}</button>}
-                    {frame.inputs.map((port, index) => (
-                      <button
-                        key={port.id}
-                        data-port="in"
-                        data-frame-id={frame.id}
-                        data-port-id={port.id}
-                        title={`${port.name}: ${port.type}`}
-                        className={`port port-in${wire ? compatible(wire.outputType, port.type) && wire.fromFrame !== frame.id ? ' can-connect' : ' cannot-connect' : ''}`}
-                        style={{ top: 54 + index * 22 }}
-                        onPointerDown={(event: React.PointerEvent<HTMLButtonElement>) => event.stopPropagation()}
-                      />
-                    ))}
-                    {frame.outputs.map((port, index) => (
-                      <button
-                        key={port.id}
-                        data-port="out"
-                        data-frame-id={frame.id}
-                        data-port-id={port.id}
-                        title={`${port.name}: ${port.type}`}
-                        className="port port-out"
-                        style={{ top: 54 + index * 22 }}
-                        onPointerDown={(event: React.PointerEvent<HTMLButtonElement>) => startWire(event, frame, port, index)}
-                      />
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-            <div className="canvas-hint"><span>Drag space to move</span><i /><span>Shift selects more</span><i /><span>Ctrl scroll zooms</span></div>
-          </div>
-        </div>
-      </section>
-
-      <aside className="inspector">
-        {sideMode === 'proposal' && activeProposal ? (
-          <ProposalInspector proposal={activeProposal} onAccept={() => void acceptActiveProposal()} onReject={rejectActiveProposal} onClose={() => setSideMode('frame')} />
-        ) : sideMode === 'issues' ? (
-          <IssuesInspector issues={lintIssues} executionIssues={executionIssues} onSelect={ids => { setSelectedFrameIds(ids); setSideMode('frame'); }} onClose={() => setSideMode('frame')} />
-        ) : sideMode === 'runs' ? (
-          <RunsInspector runs={runs} activeRun={run} onSelect={selected => setRun(selected)} onClose={() => setSideMode('frame')} />
-        ) : selectedFrame ? (
-          <FrameInspector
-            frame={selectedFrame}
-            step={stepMap.get(selectedFrame.id)}
-            selectedCount={selectedFrameIds.length}
-            childCount={(childrenByParent.get(selectedFrame.id) ?? []).length}
-            onClose={() => setSelectedFrameIds([])}
-            onChange={patch => updateFrame(selectedFrame.id, patch)}
-            onDelete={deleteSelection}
-            onRun={() => void executeSelected()}
-            onContain={containSelection}
-            onRelease={releaseFromParent}
-            onToggleCollapse={() => toggleCollapsed(selectedFrame.id)}
-          />
-        ) : (
-          <FrameworkInspector
-            framework={framework}
-            pendingProposals={proposalCount}
-            transformations={framework.transformations?.length ?? 0}
-            onOpenProposal={() => setSideMode('proposal')}
-            onOpenIssues={() => setSideMode('issues')}
-            onOpenRuns={() => setSideMode('runs')}
-          />
-        )}
-      </aside>
-
-      {run && <div className={`run-strip${run.status === 'error' ? ' run-strip-error' : ''}`}><span>{run.status === 'running' ? 'RUNNING' : run.status === 'ok' ? 'DONE' : 'STOPPED'}</span><strong>{run.steps.filter(step => step.status === 'ok').length}/{framework.frames.length}</strong><button onClick={() => setRun(null)}>×</button></div>}
-    </main>
-  );
+    <aside className="inspector">
+      {sideMode==='proposal'&&activeProposal?<ProposalInspector proposal={activeProposal} onAccept={()=>void acceptActiveProposal()} onReject={rejectActiveProposal} onClose={()=>setSideMode('frame')}/>
+      :sideMode==='issues'?<IssuesInspector issues={lintIssues} executionIssues={executionIssues} onSelect={ids=>{setSelectedFrameIds(ids);setSelectedChainId(null);setSideMode('frame');}} onClose={()=>setSideMode('frame')}/>
+      :sideMode==='runs'?<RunsInspector runs={runs} activeRun={run} onSelect={setRun} onClose={()=>setSideMode('frame')}/>
+      :sideMode==='chain'&&selectedChain?<ChainInspector chain={selectedChain} onClose={()=>{setSelectedChainId(null);setSideMode('frame');}} onRun={()=>void executeSelectedChain()} onMode={mode=>mutateChain(doc=>updateChain(doc,selectedChain.id,{executionMode:mode}),'Change Chain Execution')} onRelation={updateChainRelationship} onPause={()=>mutateChain(doc=>updateChain(doc,selectedChain.id,{paused:!selectedChain.paused}),selectedChain.paused?'Resume Chain':'Pause Chain')} onBypass={()=>mutateChain(doc=>updateChain(doc,selectedChain.id,{bypassed:!selectedChain.bypassed}),selectedChain.bypassed?'Restore Chain':'Bypass Chain')} onIterations={limit=>mutateChain(doc=>updateChain(doc,selectedChain.id,{iterationLimit:limit}),'Change Iteration Limit')} onReverse={()=>mutateChain(doc=>reverseChain(doc,selectedChain.id),'Reverse Chain')} onDuplicate={()=>{setSelectedFrameIds(selectedChain.frameIds);requestAnimationFrame(()=>duplicateSelection());}} onWrap={()=>{const next=applyChain(frameworkRef.current,selectedChain.frameIds,'recursive-framework','sequential'),chain=next.chains?.at(-1);changeFramework(()=>next,{label:'Wrap Chain as Framework'});if(chain){setSelectedChainId(chain.id);setSelectedFrameIds(chain.frameIds);}}} onSave={()=>mutateChain(doc=>saveChainPattern(doc,selectedChain.id),'Save Chain Pattern')} onRemove={()=>{mutateChain(doc=>removeChain(doc,selectedChain.id),'Remove Chain');setSelectedChainId(null);setSideMode('frame');}}/>
+      :selectedFrame?<FrameInspector frame={selectedFrame} step={stepMap.get(selectedFrame.id)} selectedCount={selectedFrameIds.length} childCount={(childrenByParent.get(selectedFrame.id)??[]).length} onClose={()=>setSelectedFrameIds([])} onChange={patch=>updateFrame(selectedFrame.id,patch)} onDelete={deleteSelection} onRun={()=>void executeSelected()} onContain={containSelection} onRelease={releaseFromParent} onToggleCollapse={()=>toggleCollapsed(selectedFrame.id)} onFragment={(fragmentId,state,replacement)=>updateFrame(selectedFrame.id,setFragmentState(selectedFrame,fragmentId,state,replacement))} onWithout={()=>void executeCounterfactual('disable')}/>
+      :<FrameworkInspector framework={framework} pendingProposals={proposalCount} transformations={framework.transformations?.length??0} onOpenProposal={()=>setSideMode('proposal')} onOpenIssues={()=>setSideMode('issues')} onOpenRuns={()=>setSideMode('runs')}/>} 
+    </aside>
+    {run&&<div className={`run-strip${run.status==='error'?' run-strip-error':''}`}><span>{run.status==='running'?'RUNNING':run.status==='ok'?(run.variant==='counterfactual'?'COUNTERFACTUAL':'DONE'):'STOPPED'}</span><strong>{new Set(run.steps.filter(step=>completedStep(step.status)).map(step=>step.frameId)).size}/{framework.frames.length}</strong>{run.reusedStepCount?<em>{run.reusedStepCount} reused</em>:null}<button onClick={()=>setRun(null)}>×</button></div>}
+  </main>;
 }
 
-function FrameInspector({ frame, step, selectedCount, childCount, onClose, onChange, onDelete, onRun, onContain, onRelease, onToggleCollapse }: {
-  frame: Frame;
-  step?: FrameworkRun['steps'][number];
-  selectedCount: number;
-  childCount: number;
-  onClose: () => void;
-  onChange: (patch: Partial<Frame>) => void;
-  onDelete: () => void;
-  onRun: () => void;
-  onContain: () => void;
-  onRelease: () => void;
-  onToggleCollapse: () => void;
-}) {
-  const bodyLabel = { asset: 'Data', instruction: 'Order', expression: 'Logic', check: 'Check', output: 'Content' }[frame.kind];
-  return <>
-    <div className="inspector-head"><div><span>FRAME</span><strong>{frame.title}</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
-    <label className="field"><span>Name</span><input value={frame.title} onChange={(event: React.ChangeEvent<HTMLInputElement>) => onChange({ title: event.target.value })} /></label>
-    <div className="dual-field">
-      <label className="field"><span>Role</span><select value={frame.role ?? 'concept'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ role: event.target.value as FrameRole })}>{ROLES.map(role => <option key={role} value={role}>{label(role)}</option>)}</select></label>
-      <label className="field"><span>State</span><select value={frame.epistemicState ?? 'unknown'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ epistemicState: event.target.value as EpistemicState })}>{STATES.map(state => <option key={state} value={state}>{label(state)}</option>)}</select></label>
-    </div>
-    {frame.kind === 'instruction' && <div className="order-block"><span>Orders</span><div className="order-list">{FRAME_ORDERS.map(order => <button key={order.id} className={frame.orderPreset === order.id ? 'active' : ''} onClick={() => onChange({ title: order.title, body: order.prompt, operation: 'MODEL', orderPreset: order.id })}>{order.title}</button>)}</div></div>}
-    {frame.kind !== 'output' && <label className="field"><span>{bodyLabel}</span><textarea value={String(frame.kind === 'asset' ? frame.value ?? '' : frame.body)} onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => frame.kind === 'asset' ? onChange({ value: event.target.value }) : onChange({ body: event.target.value, orderPreset: '' })} /></label>}
-    {(frame.kind === 'instruction' || frame.kind === 'expression') && <div className="seg-field"><span>Mode</span><div className="seg"><button className={frame.operation === 'DETERMINISTIC' ? 'active' : ''} onClick={() => onChange({ operation: 'DETERMINISTIC' })}>Local</button><button className={frame.operation === 'MODEL' ? 'active' : ''} onClick={() => onChange({ operation: 'MODEL' })}>Online</button></div></div>}
-    {frame.kind === 'expression' && <div className="seg-field"><span>Behavior</span><div className="seg"><button className={frame.expressionClass === 'EXECUTABLE' ? 'active' : ''} onClick={() => onChange({ expressionClass: 'EXECUTABLE' })}>Run</button><button className={frame.expressionClass === 'DESCRIPTIVE' ? 'active' : ''} onClick={() => onChange({ expressionClass: 'DESCRIPTIVE' })}>Note</button></div></div>}
-    <div className="hierarchy-block"><span>Hierarchy</span><p>{frame.parentId ? 'Contained by another Frame.' : 'Top level Frame.'}{childCount ? ` Contains ${childCount}.` : ''}</p>{selectedCount > 1 && <button onClick={onContain}>Contain selection in active Frame</button>}{frame.parentId && <button onClick={onRelease}>Release from parent</button>}{childCount > 0 && <button onClick={onToggleCollapse}>{frame.collapsed ? 'Expand children' : 'Collapse children'}</button>}</div>
-    <div className="io-block"><span>Connections</span>{[...frame.inputs.map(port => `IN  ${port.name}:${port.type}`), ...frame.outputs.map(port => `OUT ${port.name}:${port.type}`)].map(text => <code key={text}>{text}</code>)}</div>
-    <div className="provenance-block"><span>Origin</span><b>{label(frame.provenance?.origin ?? 'user')}</b>{frame.provenance?.source && <small>{frame.provenance.source}</small>}</div>
-    <div className="trace-block"><span>Last run</span>{step ? <><b className={`trace-state trace-${step.status}`}>{step.status === 'ok' ? 'DONE' : 'ERROR'}</b><dl><dt>Input</dt><dd>{short(step.input, 180)}</dd><dt>Order</dt><dd>{frame.body || 'Local operation'}</dd><dt>Output</dt><dd>{short(step.output, 180)}</dd><dt>Executor</dt><dd>{step.executor === 'MODEL' ? 'Online model' : 'Local'}</dd>{step.error && <><dt>Error</dt><dd>{step.error}</dd></>}</dl></> : <em>Not run</em>}</div>
-    <button className="inspector-run" onClick={onRun}>Run Frame</button>
-    <button className="delete-btn" onClick={onDelete}>Delete</button>
-  </>;
+function FrameInspector({frame,step,selectedCount,childCount,onClose,onChange,onDelete,onRun,onContain,onRelease,onToggleCollapse,onFragment,onWithout}:{frame:Frame;step?:FrameworkRun['steps'][number];selectedCount:number;childCount:number;onClose:()=>void;onChange:(patch:Partial<Frame>)=>void;onDelete:()=>void;onRun:()=>void;onContain:()=>void;onRelease:()=>void;onToggleCollapse:()=>void;onFragment:(fragmentId:string,state:FragmentState,replacement?:string)=>void;onWithout:()=>void}){
+  const bodyLabel={asset:'Data',instruction:'Order',expression:'Logic',check:'Check',output:'Content',framework:'Framework'}[frame.kind],fragments=frame.body?frameFragments(frame):[];
+  return <><div className="inspector-head"><div><span>FRAME</span><strong>{frame.title}</strong></div><button className="close-inspector" onClick={onClose}>×</button></div><label className="field"><span>Name</span><input value={frame.title} onChange={event=>onChange({title:event.target.value})}/></label><div className="dual-field"><label className="field"><span>Role</span><select value={frame.role??'concept'} onChange={event=>onChange({role:event.target.value as FrameRole})}>{ROLES.map(role=><option key={role} value={role}>{label(role)}</option>)}</select></label><label className="field"><span>State</span><select value={frame.epistemicState??'unknown'} onChange={event=>onChange({epistemicState:event.target.value as EpistemicState})}>{STATES.map(state=><option key={state} value={state}>{label(state)}</option>)}</select></label></div>
+  {frame.kind==='instruction'&&<div className="order-block"><span>Orders</span><div className="order-list">{FRAME_ORDERS.map(order=><button key={order.id} className={frame.orderPreset===order.id?'active':''} onClick={()=>onChange({title:order.title,body:order.prompt,operation:'MODEL',orderPreset:order.id})}>{order.title}</button>)}</div></div>}
+  {frame.kind!=='output'&&frame.kind!=='framework'&&<label className="field"><span>{bodyLabel}</span><textarea value={String(frame.kind==='asset'?frame.value??'':frame.body)} onChange={event=>frame.kind==='asset'?onChange({value:event.target.value}):onChange({body:event.target.value,orderPreset:''})}/></label>}
+  {(frame.kind==='instruction'||frame.kind==='expression')&&<div className="seg-field"><span>Executor</span><div className="seg"><button className={frame.operation==='DETERMINISTIC'?'active':''} onClick={()=>onChange({operation:'DETERMINISTIC'})}>Local</button><button className={frame.operation==='MODEL'?'active':''} onClick={()=>onChange({operation:'MODEL'})}>Online</button></div></div>}
+  {frame.kind==='expression'&&<div className="seg-field"><span>Behavior</span><div className="seg"><button className={frame.expressionClass==='EXECUTABLE'?'active':''} onClick={()=>onChange({expressionClass:'EXECUTABLE'})}>Run</button><button className={frame.expressionClass==='DESCRIPTIVE'?'active':''} onClick={()=>onChange({expressionClass:'DESCRIPTIVE'})}>Note</button></div></div>}
+  <div className="seg-field"><span>Compositing state</span><div className="seg seg-three"><button className={(frame.controlState??'active')==='active'?'active':''} onClick={()=>onChange({controlState:'active'})}>Active</button><button className={frame.controlState==='disabled'?'active':''} onClick={()=>onChange({controlState:'disabled'})}>Disable</button><button className={frame.controlState==='bypass'?'active':''} onClick={()=>onChange({controlState:'bypass'})}>Bypass</button></div></div>
+  {fragments.length>0&&<div className="fragment-block"><span>Addressable instruction</span>{fragments.map(fragment=><article key={fragment.id} className={`fragment fragment-${fragment.state??'active'}`}><p>{fragment.text}</p><select value={fragment.state??'active'} onChange={event=>onFragment(fragment.id,event.target.value as FragmentState,fragment.replacement)}><option value="active">Active</option><option value="masked">Mask</option><option value="subtracted">Subtract</option><option value="replaced">Replace</option></select>{fragment.state==='replaced'&&<input value={fragment.replacement??''} placeholder="Replacement" onChange={event=>onFragment(fragment.id,'replaced',event.target.value)}/>}</article>)}</div>}
+  <label className="field"><span>Assumptions</span><textarea className="compact-textarea" value={(frame.assumptions??[]).join('\n')} placeholder="One explicit assumption per line" onChange={event=>onChange({assumptions:event.target.value.split('\n').map(v=>v.trim()).filter(Boolean)})}/></label><label className="field"><span>Source references</span><textarea className="compact-textarea" value={(frame.sourceRefs??[]).join('\n')} placeholder="One source or evidence reference per line" onChange={event=>onChange({sourceRefs:event.target.value.split('\n').map(v=>v.trim()).filter(Boolean)})}/></label>
+  <div className="hierarchy-block"><span>Hierarchy</span><p>{frame.parentId?'Contained by another Frame.':'Top level Frame.'}{childCount?` Contains ${childCount}.`:''}</p>{selectedCount>1&&<button onClick={onContain}>Contain selection in active Frame</button>}{frame.parentId&&<button onClick={onRelease}>Release from parent</button>}{childCount>0&&<button onClick={onToggleCollapse}>{frame.collapsed?'Expand children':'Collapse children'}</button>}</div>
+  <div className="io-block"><span>Connections</span>{[...frame.inputs.map(port=>`IN  ${port.name}:${port.type}`),...frame.outputs.map(port=>`OUT ${port.name}:${port.type}`)].map(text=><code key={text}>{text}</code>)}</div><div className="provenance-block"><span>Origin</span><b>{label(frame.provenance?.origin??'user')}</b>{frame.provenance?.source&&<small>{frame.provenance.source}</small>}</div>
+  <div className="trace-block"><span>Last run</span>{step?<><b className={`trace-state trace-${step.status}`}>{label(step.status)}</b><dl><dt>Input</dt><dd>{short(step.input,180)}</dd><dt>Order</dt><dd>{frame.body||'Local operation'}</dd><dt>Output</dt><dd>{short(step.output,180)}</dd><dt>Executor</dt><dd>{step.executor==='MODEL'?'Online model':'Local'}</dd>{step.dependencyFingerprint&&<><dt>Dependency</dt><dd>{step.dependencyFingerprint}</dd></>}{step.reason&&<><dt>Reason</dt><dd>{step.reason}</dd></>}{step.error&&<><dt>Error</dt><dd>{step.error}</dd></>}</dl></>:<em>Not run</em>}</div>
+  <button className="inspector-run" onClick={onRun}>Run Frame</button><button className="panel-action counterfactual-panel-action" onClick={onWithout}>Run Without This Frame</button><button className="delete-btn" onClick={onDelete}>Delete</button></>;
 }
 
-function ProposalInspector({ proposal, onAccept, onReject, onClose }: { proposal: Proposal; onAccept: () => void; onReject: () => void; onClose: () => void }) {
-  return <>
-    <div className="inspector-head"><div><span>PROPOSAL</span><strong>{label(proposal.operation)}</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
-    <p className="proposal-summary">{proposal.summary}</p>
-    <div className="proposal-list">{proposal.additions.length ? proposal.additions.map(item => <article key={item.tempId}><span>{label(item.role ?? 'concept')}</span><strong>{item.title}</strong>{item.body && <p>{item.body}</p>}<small>{item.relationshipToAnchor ? label(item.relationshipToAnchor) : 'No relationship specified'}</small></article>) : <p className="empty-copy">No structural addition was proposed.</p>}</div>
-    <button className="inspector-run" onClick={onAccept}>{proposal.operation === 'compress' ? 'Create Framework' : 'Accept Proposal'}</button>
-    <button className="delete-btn" onClick={onReject}>Reject</button>
-  </>;
+function ChainInspector({chain,onClose,onRun,onMode,onRelation,onPause,onBypass,onIterations,onReverse,onDuplicate,onWrap,onSave,onRemove}:{chain:ChainDefinition;onClose:()=>void;onRun:()=>void;onMode:(mode:ExecutionMode)=>void;onRelation:(meaning:RelationshipMeaning)=>void;onPause:()=>void;onBypass:()=>void;onIterations:(limit:number)=>void;onReverse:()=>void;onDuplicate:()=>void;onWrap:()=>void;onSave:()=>void;onRemove:()=>void}){
+  return <><div className="inspector-head"><div><span>CHAIN</span><strong>{label(chain.type)}</strong></div><button className="close-inspector" onClick={onClose}>×</button></div><div className="chain-inspector-preview">{chainPreview(chain.type,chain.frameIds.length)}</div><dl className="chain-stats"><dt>Frames</dt><dd>{chain.frameIds.length}</dd><dt>Topology</dt><dd>{label(chain.type)}</dd><dt>State</dt><dd>{chain.paused?'Paused':chain.bypassed?'Bypassed':'Active'}</dd></dl><label className="field"><span>Execution mode</span><select value={chain.executionMode} onChange={event=>onMode(event.target.value as ExecutionMode)}>{EXECUTION_MODES.map(mode=><option key={mode} value={mode}>{label(mode)}</option>)}</select></label><label className="field"><span>Relationship</span><select value={chain.relationMeaning??'feeds'} onChange={event=>onRelation(event.target.value as RelationshipMeaning)}><option value="feeds">Feeds</option>{RELATIONSHIPS.map(meaning=><option key={meaning} value={meaning}>{label(meaning)}</option>)}</select></label>{(chain.type==='feedback'||chain.type==='reciprocal'||chain.executionMode==='iterative')&&<label className="field"><span>Iteration limit</span><input type="number" min="1" max="20" value={chain.iterationLimit??3} onChange={event=>onIterations(clamp(Number(event.target.value)||1,1,20))}/></label>}<button className="inspector-run" onClick={onRun}>Run Chain</button><button className="panel-action" onClick={onPause}>{chain.paused?'Resume Chain':'Pause Chain'}</button><button className="panel-action" onClick={onBypass}>{chain.bypassed?'Restore Chain':'Bypass Chain'}</button><button className="panel-action" onClick={onReverse}>Reverse Chain</button><button className="panel-action" onClick={onDuplicate}>Duplicate Chain</button><button className="panel-action" onClick={onWrap}>Wrap as Sub-framework</button><button className="panel-action" onClick={onSave}>Save as Reusable Pattern</button><button className="delete-btn" onClick={onRemove}>Remove Chain Definition</button></>;
 }
 
-function IssuesInspector({ issues, executionIssues, onSelect, onClose }: { issues: ReturnType<typeof lintFramework>; executionIssues: string[]; onSelect: (ids: string[]) => void; onClose: () => void }) {
-  return <>
-    <div className="inspector-head"><div><span>FRAMEWORK</span><strong>Issues</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
-    {!issues.length && !executionIssues.length && <p className="empty-copy">No current issues.</p>}
-    <div className="issue-list">
-      {executionIssues.map((message, index) => <article key={`execution-${index}`} className="issue error"><span>EXECUTION</span><p>{message}</p></article>)}
-      {issues.map(issue => <button key={issue.id} className={`issue ${issue.severity}`} onClick={() => onSelect(issue.frameIds)}><span>{issue.code.replaceAll('_', ' ')}</span><p>{issue.message}</p></button>)}
-    </div>
-  </>;
-}
-
-function RunsInspector({ runs, activeRun, onSelect, onClose }: { runs: FrameworkRun[]; activeRun: FrameworkRun | null; onSelect: (run: FrameworkRun) => void; onClose: () => void }) {
-  return <>
-    <div className="inspector-head"><div><span>FRAMEWORK</span><strong>Runs</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
-    {!runs.length && <p className="empty-copy">No saved Runs yet.</p>}
-    <div className="run-list">{runs.map(item => <button key={item.id} className={activeRun?.id === item.id ? 'active' : ''} onClick={() => onSelect(item)}><span>{item.status.toUpperCase()}</span><strong>{new Date(item.startedAt).toLocaleString()}</strong><small>{item.steps.length} steps</small></button>)}</div>
-    {activeRun && <div className="run-detail"><span>Selected Run</span>{activeRun.steps.map(step => <article key={step.frameId}><b>{step.frameId}</b><small>{step.status.toUpperCase()} · {step.durationMs}ms</small><p>{short(step.output ?? step.error, 220)}</p></article>)}</div>}
-  </>;
-}
-
-function FrameworkInspector({ framework, pendingProposals, transformations, onOpenProposal, onOpenIssues, onOpenRuns }: { framework: FrameworkDocument; pendingProposals: number; transformations: number; onOpenProposal: () => void; onOpenIssues: () => void; onOpenRuns: () => void }) {
-  return <div className="framework-inspector">
-    <div className="inspector-head"><div><span>FRAMEWORK</span><strong>{framework.name}</strong></div></div>
-    <dl><dt>Goal</dt><dd>{label(framework.goal ?? 'understand')}</dd><dt>Version</dt><dd>{framework.version ?? 1}</dd><dt>Frames</dt><dd>{framework.frames.length}</dd><dt>Relationships</dt><dd>{framework.connections.length}</dd><dt>Transformations</dt><dd>{transformations}</dd></dl>
-    {pendingProposals > 0 && <button className="panel-action" onClick={onOpenProposal}>Review Proposal</button>}
-    <button className="panel-action" onClick={onOpenIssues}>Inspect Issues</button>
-    <button className="panel-action" onClick={onOpenRuns}>Inspect Runs</button>
-  </div>;
-}
+function ProposalInspector({proposal,onAccept,onReject,onClose}:{proposal:Proposal;onAccept:()=>void;onReject:()=>void;onClose:()=>void}){return <><div className="inspector-head"><div><span>PROPOSAL</span><strong>{label(proposal.operation)}</strong></div><button className="close-inspector" onClick={onClose}>×</button></div><p className="proposal-summary">{proposal.summary}</p><div className="proposal-list">{proposal.additions.length?proposal.additions.map(item=><article key={item.tempId}><span>{label(item.role??'concept')}</span><strong>{item.title}</strong>{item.body&&<p>{item.body}</p>}<small>{item.relationshipToAnchor?label(item.relationshipToAnchor):'No relationship specified'}</small></article>):<p className="empty-copy">No structural addition was proposed.</p>}</div><button className="inspector-run" onClick={onAccept}>{proposal.operation==='compress'?'Create Framework':'Accept Proposal'}</button><button className="delete-btn" onClick={onReject}>Reject</button></>}
+function IssuesInspector({issues,executionIssues,onSelect,onClose}:{issues:ReturnType<typeof lintFramework>;executionIssues:string[];onSelect:(ids:string[])=>void;onClose:()=>void}){return <><div className="inspector-head"><div><span>FRAMEWORK</span><strong>Issues</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>{!issues.length&&!executionIssues.length&&<p className="empty-copy">No current issues.</p>}<div className="issue-list">{executionIssues.map((message,index)=><article key={`execution-${index}`} className="issue error"><span>EXECUTION</span><p>{message}</p></article>)}{issues.map(issue=><button key={issue.id} className={`issue ${issue.severity}`} onClick={()=>onSelect(issue.frameIds)}><span>{issue.code.replaceAll('_',' ')}</span><p>{issue.message}</p></button>)}</div></>}
+function RunsInspector({runs,activeRun,onSelect,onClose}:{runs:FrameworkRun[];activeRun:FrameworkRun|null;onSelect:(run:FrameworkRun)=>void;onClose:()=>void}){const changed=activeRun?.counterfactual?.changedFrameIds??[];return <><div className="inspector-head"><div><span>FRAMEWORK</span><strong>Runs</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>{!runs.length&&<p className="empty-copy">No saved Runs yet.</p>}<div className="run-list">{runs.map(item=><button key={item.id} className={activeRun?.id===item.id?'active':''} onClick={()=>onSelect(item)}><span>{item.variant==='counterfactual'?'WHAT IF':item.status.toUpperCase()}</span><strong>{new Date(item.startedAt).toLocaleString()}</strong><small>{item.steps.length} steps{item.reusedStepCount?` · ${item.reusedStepCount} reused`:''}</small></button>)}</div>{activeRun&&<div className="run-detail"><span>Selected Run</span>{activeRun.counterfactual&&<div className="counterfactual-summary"><b>{activeRun.counterfactual.label}</b><small>{changed.length} downstream outputs changed</small>{changed.length>0&&<p>{changed.join(', ')}</p>}</div>}{activeRun.steps.map((step,index)=><article key={`${step.frameId}-${step.iteration??0}-${index}`}><b>{step.frameId}{step.iteration?` · iteration ${step.iteration}`:''}</b><small>{step.status.toUpperCase()} · {step.durationMs}ms</small><p>{short(step.output??step.error??step.reason,220)}</p></article>)}</div>}</>}
+function FrameworkInspector({framework,pendingProposals,transformations,onOpenProposal,onOpenIssues,onOpenRuns}:{framework:FrameworkDocument;pendingProposals:number;transformations:number;onOpenProposal:()=>void;onOpenIssues:()=>void;onOpenRuns:()=>void}){return <div className="framework-inspector"><div className="inspector-head"><div><span>FRAMEWORK</span><strong>{framework.name}</strong></div></div><dl><dt>Goal</dt><dd>{label(framework.goal??'understand')}</dd><dt>Version</dt><dd>{framework.version??1}</dd><dt>Frames</dt><dd>{framework.frames.length}</dd><dt>Relationships</dt><dd>{framework.connections.length}</dd><dt>Chains</dt><dd>{framework.chains?.length??0}</dd><dt>Patterns</dt><dd>{framework.patterns?.length??0}</dd><dt>Compositing edits</dt><dd>{framework.compositeOperations?.length??0}</dd><dt>Transformations</dt><dd>{transformations}</dd></dl>{pendingProposals>0&&<button className="panel-action" onClick={onOpenProposal}>Review Proposal</button>}<button className="panel-action" onClick={onOpenIssues}>Inspect Issues</button><button className="panel-action" onClick={onOpenRuns}>Inspect Runs</button></div>}
