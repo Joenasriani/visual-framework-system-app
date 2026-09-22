@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 
-const URL = process.env.LIVE_URL || 'https://visual-framework-app.vercel.app';
+const URL = process.env.LIVE_URL || 'https://visual-framework-system.vercel.app';
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const page = await context.newPage();
