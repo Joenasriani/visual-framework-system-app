@@ -34,7 +34,7 @@ export default async function handler(req, res) {
 
   const host = req.headers['x-forwarded-host'] || req.headers.host;
   const proto = req.headers['x-forwarded-proto'] || 'https';
-  const referer = host ? `${proto}://${host}` : 'https://visual-framework-app.vercel.app';
+  const referer = host ? `${proto}://${host}` : 'https://visual-framework-system.vercel.app';
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 55000);
 
