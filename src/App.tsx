@@ -110,6 +110,21 @@ const label = (value: string) => value.replaceAll('-', ' ').replace(/\b\w/g, mat
 const roleLabel = (value: FrameRole) => ROLE_LABELS[value] ?? label(value);
 const stateLabel = (value: EpistemicState) => STATE_LABELS[value] ?? label(value);
 const relationshipLabel = (value: RelationshipMeaning) => RELATIONSHIP_LABELS[value] ?? label(value);
+const checkCodeLabel = (value: string) => ({
+  ISOLATED_FRAME: 'ISOLATED ELEMENT',
+  UNSUPPORTED_CLAIM: 'UNSUPPORTED CLAIM',
+  NO_ALTERNATIVE: 'NO ALTERNATIVE',
+  POSSIBLE_DUPLICATE: 'POSSIBLE DUPLICATE',
+  CONTRADICTION: 'CONFLICT',
+  ASSUMPTION_AS_RESULT_SUPPORT: 'ASSUMPTION SUPPORT',
+  CAUSAL_SUPPORT_MISSING: 'CAUSAL SUPPORT NEEDED',
+  REASONING_CYCLE: 'REASONING LOOP'
+} as Record<string, string>)[value] ?? value.replaceAll('_', ' ');
+const checkMessage = (value: string) => value
+  .replace(/\bFrames\b/g, 'elements')
+  .replace(/\bFrame\b/g, 'element')
+  .replace(/Missing port:/g, 'Missing connection point:')
+  .replace(/Execution failed/g, 'Run failed');
 
 function portCenter(frame: Frame, side: 'in' | 'out', index = 0) {
   return { x: side === 'out' ? frame.x + FRAME_WIDTH : frame.x, y: frame.y + 54 + index * 22 };
@@ -151,15 +166,15 @@ function makeFrame(kind: FrameKind, x: number, y: number): Frame {
     return { id, kind, role: 'concept', epistemicState: 'unknown', provenance, title: 'Concept', operation: 'DETERMINISTIC', x, y, inputs: [], outputs: [{ id: 'out', name: 'value', type: 'any' }], body: '', value: 'New concept' };
   }
   if (kind === 'instruction') {
-    return { id, kind, role: 'instruction', epistemicState: 'known', provenance, title: 'Step', operation: 'MODEL', x, y, inputs: [{ id: 'in', name: 'input', type: 'any' }], outputs: [{ id: 'out', name: 'result', type: 'any' }], body: 'Transform the input.' };
+    return { id, kind, role: 'instruction', epistemicState: 'known', provenance, title: 'Process', operation: 'MODEL', x, y, inputs: [{ id: 'in', name: 'input', type: 'any' }], outputs: [{ id: 'out', name: 'result', type: 'any' }], body: 'Transform the input.' };
   }
   if (kind === 'expression') {
-    return { id, kind, role: 'evaluation', epistemicState: 'known', provenance, title: 'Logic', operation: 'DETERMINISTIC', expressionClass: 'EXECUTABLE', x, y, inputs: [{ id: 'in', name: 'input', type: 'text' }], outputs: [{ id: 'out', name: 'value', type: 'boolean' }], body: 'notEmpty(input)' };
+    return { id, kind, role: 'evaluation', epistemicState: 'known', provenance, title: 'Rule', operation: 'DETERMINISTIC', expressionClass: 'EXECUTABLE', x, y, inputs: [{ id: 'in', name: 'input', type: 'text' }], outputs: [{ id: 'out', name: 'value', type: 'boolean' }], body: 'notEmpty(input)' };
   }
   if (kind === 'check') {
-    return { id, kind, role: 'evaluation', epistemicState: 'known', provenance, title: 'Check', operation: 'DETERMINISTIC', x, y, inputs: [{ id: 'in', name: 'input', type: 'any' }], outputs: [{ id: 'out', name: 'valid', type: 'boolean' }], body: 'Pass if truthy' };
+    return { id, kind, role: 'evaluation', epistemicState: 'known', provenance, title: 'Test', operation: 'DETERMINISTIC', x, y, inputs: [{ id: 'in', name: 'input', type: 'any' }], outputs: [{ id: 'out', name: 'valid', type: 'boolean' }], body: 'Pass if truthy' };
   }
-  return { id, kind, role: 'result', epistemicState: 'inferred', provenance, title: 'Result', operation: 'DETERMINISTIC', x, y, inputs: [{ id: 'in', name: 'input', type: 'any' }], outputs: [], body: '' };
+  return { id, kind, role: 'result', epistemicState: 'inferred', provenance, title: 'Outcome', operation: 'DETERMINISTIC', x, y, inputs: [{ id: 'in', name: 'input', type: 'any' }], outputs: [], body: '' };
 }
 
 interface DragState {
@@ -978,7 +993,7 @@ export default function App() {
           <span className={`status status-${status.toLowerCase()}`}><i /><b>{status}</b></span>
           <button className="text-btn" onClick={undo} disabled={!pastRef.current.length}>Undo</button>
           <button className="text-btn" onClick={redo} disabled={!futureRef.current.length}>Redo</button>
-          <button className="text-btn" onClick={() => setSideMode('issues')}>Issues {lintIssues.length + executionIssues.length}</button>
+          <button className="text-btn" onClick={() => setSideMode('issues')}>Checks {lintIssues.length + executionIssues.length}</button>
           <button className="text-btn" onClick={() => setSideMode('runs')}>Runs {runs.length}</button>
           <button className="text-btn" onClick={reset}>Reset</button>
           <button className="run-button" onClick={() => void executeAll()} disabled={status === 'RUNNING' || status === 'THINKING'}><span>Run</span><kbd>⌘R</kbd></button>
@@ -1094,7 +1109,7 @@ export default function App() {
                 const step = stepMap.get(frame.id);
                 const active = run?.activeFrameId === frame.id;
                 const selected = selectedFrameIds.includes(frame.id);
-                const body = active ? 'Running…' : step?.status === 'ok' ? short(step.output) : step?.status === 'error' ? 'Execution stopped' : frame.kind === 'asset' ? short(frame.value) : frame.body || '';
+                const body = active ? 'Running…' : step?.status === 'ok' ? short(step.output) : step?.status === 'error' ? 'Run stopped' : frame.kind === 'asset' ? short(frame.value) : frame.body || '';
                 const meta = active ? 'RUNNING' : step ? `${step.durationMs}ms` : frame.epistemicState ? stateLabel(frame.epistemicState) : 'UNASSESSED';
                 const children = childrenByParent.get(frame.id) ?? [];
                 const parent = frame.parentId ? frameMap.get(frame.parentId) : undefined;
@@ -1112,7 +1127,7 @@ export default function App() {
                     <div className="frame-index">{frame.role ? roleLabel(frame.role) : KIND_LABELS[frame.kind]}</div>
                     <div className="frame-title">{frame.title}</div>
                     <div className="frame-body">{body}</div>
-                    <div className="frame-meta"><span>{meta}</span><span>{frame.operation === 'MODEL' ? 'ONLINE' : 'LOCAL'}</span></div>
+                    <div className="frame-meta"><span>{meta}</span><span>{frame.operation === 'MODEL' ? 'MODEL' : 'LOCAL'}</span></div>
                     {parent && <span className="frame-parent">inside {parent.title}</span>}
                     {children.length > 0 && <button className="frame-collapse" onClick={(event: React.MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); toggleCollapsed(frame.id); }}>{frame.collapsed ? `+${children.length}` : `−${children.length}`}</button>}
                     {frame.inputs.map((port, index) => (
@@ -1205,7 +1220,7 @@ function FrameInspector({ frame, step, selectedCount, childCount, onClose, onCha
     <label className="field"><span>Name</span><input value={frame.title} onChange={(event: React.ChangeEvent<HTMLInputElement>) => onChange({ title: event.target.value })} /></label>
     <div className="dual-field">
       <label className="field"><span>Element Type</span><select value={frame.role ?? 'concept'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ role: event.target.value as FrameRole })}>{ROLES.map(role => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
-      <label className="field"><span>State</span><select value={frame.epistemicState ?? 'unknown'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ epistemicState: event.target.value as EpistemicState })}>{STATES.map(state => <option key={state} value={state}>{stateLabel(state)}</option>)}</select></label>
+      <label className="field"><span>Status</span><select value={frame.epistemicState ?? 'unknown'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ epistemicState: event.target.value as EpistemicState })}>{STATES.map(state => <option key={state} value={state}>{stateLabel(state)}</option>)}</select></label>
     </div>
     {frame.kind === 'instruction' && <div className="order-block"><span>Methods</span><div className="order-list">{FRAME_ORDERS.map(order => <button key={order.id} className={frame.orderPreset === order.id ? 'active' : ''} onClick={() => onChange({ title: order.title, body: order.prompt, operation: 'MODEL', orderPreset: order.id })}>{order.title}</button>)}</div></div>}
     {frame.kind !== 'output' && <label className="field"><span>{bodyLabel}</span><textarea value={String(frame.kind === 'asset' ? frame.value ?? '' : frame.body)} onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => frame.kind === 'asset' ? onChange({ value: event.target.value }) : onChange({ body: event.target.value, orderPreset: '' })} /></label>}
@@ -1235,8 +1250,8 @@ function IssuesInspector({ issues, executionIssues, onSelect, onClose }: { issue
     <div className="inspector-head"><div><span>FRAMEWORK</span><strong>Checks</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
     {!issues.length && !executionIssues.length && <p className="empty-copy">No current concerns.</p>}
     <div className="issue-list">
-      {executionIssues.map((message, index) => <article key={`execution-${index}`} className="issue error"><span>RUN</span><p>{message}</p></article>)}
-      {issues.map(issue => <button key={issue.id} className={`issue ${issue.severity}`} onClick={() => onSelect(issue.frameIds)}><span>{issue.code.replaceAll('_', ' ')}</span><p>{issue.message}</p></button>)}
+      {executionIssues.map((message, index) => <article key={`execution-${index}`} className="issue error"><span>RUN</span><p>{checkMessage(message)}</p></article>)}
+      {issues.map(issue => <button key={issue.id} className={`issue ${issue.severity}`} onClick={() => onSelect(issue.frameIds)}><span>{checkCodeLabel(issue.code)}</span><p>{checkMessage(issue.message)}</p></button>)}
     </div>
   </>;
 }
@@ -1253,7 +1268,7 @@ function RunsInspector({ runs, activeRun, onSelect, onClose }: { runs: Framework
 function FrameworkInspector({ framework, pendingProposals, transformations, onOpenProposal, onOpenIssues, onOpenRuns }: { framework: FrameworkDocument; pendingProposals: number; transformations: number; onOpenProposal: () => void; onOpenIssues: () => void; onOpenRuns: () => void }) {
   return <div className="framework-inspector">
     <div className="inspector-head"><div><span>FRAMEWORK</span><strong>{framework.name}</strong></div></div>
-    <dl><dt>Goal</dt><dd>{label(framework.goal ?? 'understand')}</dd><dt>Version</dt><dd>{framework.version ?? 1}</dd><dt>Elements</dt><dd>{framework.frames.length}</dd><dt>Relationships</dt><dd>{framework.connections.length}</dd><dt>Transformations</dt><dd>{transformations}</dd></dl>
+    <dl><dt>Goal</dt><dd>{label(framework.goal ?? 'understand')}</dd><dt>Version</dt><dd>{framework.version ?? 1}</dd><dt>Elements</dt><dd>{framework.frames.length}</dd><dt>Relationships</dt><dd>{framework.connections.length}</dd><dt>Changes</dt><dd>{transformations}</dd></dl>
     {pendingProposals > 0 && <button className="panel-action" onClick={onOpenProposal}>Review Suggested Change</button>}
     <button className="panel-action" onClick={onOpenIssues}>Inspect Checks</button>
     <button className="panel-action" onClick={onOpenRuns}>Inspect Runs</button>
