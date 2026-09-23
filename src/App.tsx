@@ -34,11 +34,11 @@ import {
 } from './storage/indexeddb';
 
 const KIND_LABELS: Record<FrameKind, string> = {
-  asset: 'DATA',
-  instruction: 'STEP',
-  expression: 'LOGIC',
-  check: 'CHECK',
-  output: 'RESULT'
+  asset: 'ELEMENT',
+  instruction: 'PROCESS',
+  expression: 'RULE',
+  check: 'TEST',
+  output: 'OUTCOME'
 };
 
 const ROLES: FrameRole[] = [
@@ -52,15 +52,52 @@ const RELATIONSHIPS: RelationshipMeaning[] = [
   'supports','challenges','contradicts','depends-on','causes','influences','constrains','explains','derives-from','evidence-for','assumes','questions','tests','validates','refines','reframes','alternative-to','contains','part-of'
 ];
 const STRUCTURAL_OPERATIONS: Array<[StructuralOperation, string]> = [
-  ['expand','Expand'],
+  ['expand','Explore Further'],
   ['reframe','Reframe'],
-  ['alternatives','Alternatives'],
-  ['challenge','Challenge'],
-  ['find-missing','Find Missing'],
-  ['identify-assumption','Assumptions'],
-  ['find-contradiction','Contradictions'],
-  ['compress','Compress']
+  ['alternatives','Explore Alternatives'],
+  ['challenge','Test Reasoning'],
+  ['find-missing','Find Gaps'],
+  ['identify-assumption','Find Assumptions'],
+  ['find-contradiction','Find Conflicts'],
+  ['compress','Condense']
 ];
+
+const ROLE_LABELS: Partial<Record<FrameRole, string>> = {
+  constraint: 'Condition',
+  effect: 'Outcome',
+  alternative: 'Alternative Explanation',
+  contradiction: 'Conflict',
+  transformation: 'Change Process',
+  evaluation: 'Assessment',
+  result: 'Finding',
+  instruction: 'Process'
+};
+
+const STATE_LABELS: Partial<Record<EpistemicState, string>> = {
+  disputed: 'Mixed / Disputed'
+};
+
+const RELATIONSHIP_LABELS: Partial<Record<RelationshipMeaning, string>> = {
+  'depends-on': 'Depends On',
+  'causes': 'Causes',
+  'influences': 'Influences',
+  'constrains': 'Limits',
+  'explains': 'Explains',
+  'derives-from': 'Comes From',
+  'evidence-for': 'Is Evidence For',
+  'assumes': 'Assumes',
+  'questions': 'Questions',
+  'tests': 'Tests',
+  'validates': 'Checks',
+  'refines': 'Refines',
+  'reframes': 'Reframes',
+  'alternative-to': 'Alternative To',
+  'contains': 'Contains',
+  'part-of': 'Part Of',
+  'supports': 'Supports',
+  'challenges': 'Challenges',
+  'contradicts': 'Conflicts With'
+};
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const clone = <T,>(value: T): T => structuredClone(value);
@@ -70,6 +107,9 @@ const short = (value: unknown, limit = 82) => {
   return text.length > limit ? `${text.slice(0, Math.max(0, limit - 1))}…` : text;
 };
 const label = (value: string) => value.replaceAll('-', ' ').replace(/\b\w/g, match => match.toUpperCase());
+const roleLabel = (value: FrameRole) => ROLE_LABELS[value] ?? label(value);
+const stateLabel = (value: EpistemicState) => STATE_LABELS[value] ?? label(value);
+const relationshipLabel = (value: RelationshipMeaning) => RELATIONSHIP_LABELS[value] ?? label(value);
 
 function portCenter(frame: Frame, side: 'in' | 'out', index = 0) {
   return { x: side === 'out' ? frame.x + FRAME_WIDTH : frame.x, y: frame.y + 54 + index * 22 };
@@ -948,11 +988,11 @@ export default function App() {
       <aside className="tool-rail" aria-label="Add to framework">
         <div className="tool-caption">ADD</div>
         {([
-          ['asset', '◆', 'Data', '1'],
-          ['instruction', '→', 'Step', '2'],
-          ['expression', 'ƒ', 'Logic', '3'],
-          ['check', '✓', 'Check', '4'],
-          ['output', '□', 'Result', '5']
+          ['asset', '◆', 'Element', '1'],
+          ['instruction', '→', 'Process', '2'],
+          ['expression', 'ƒ', 'Rule', '3'],
+          ['check', '✓', 'Test', '4'],
+          ['output', '□', 'Outcome', '5']
         ] as const).map(([kind, glyph, toolLabel, key]) => (
           <button key={kind} className="tool" onClick={() => addFrame(kind)}>
             <span className="tool-glyph">{glyph}</span><span className="tool-label">{toolLabel}</span><span className="tool-key">{key}</span>
@@ -970,15 +1010,15 @@ export default function App() {
               {frameworkList.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
               {!frameworkList.some(item => item.id === framework.id) && <option value={framework.id}>{framework.name}</option>}
             </select>
-            <span>{framework.frames.length} frames · {connectionCount} links</span>
+            <span>{framework.frames.length} elements · {connectionCount} relationships</span>
             {selectedFrameIds.length > 1 && <b className="selection-count">{selectedFrameIds.length} selected</b>}
           </div>
           <div className="workspace-controls">
             {selectedFrameIds.length === 2 && <>
               <select className="relation-select" value={relationshipMeaning} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setRelationshipMeaning(event.target.value as RelationshipMeaning)}>
-                {RELATIONSHIPS.map(item => <option key={item} value={item}>{label(item)}</option>)}
+                {RELATIONSHIPS.map(item => <option key={item} value={item}>{relationshipLabel(item)}</option>)}
               </select>
-              <button className="quiet-action" onClick={connectMeaning}>Relate</button>
+              <button className="quiet-action" onClick={connectMeaning}>Connect</button>
             </>}
             <button className="quiet-action" onClick={fitView}>Fit</button>
             <div className="zoom"><button onClick={() => setScale(value => clamp(+(value - 0.1).toFixed(2), 0.35, 1.6))}>−</button><span>{Math.round(scale * 100)}%</span><button onClick={() => setScale(value => clamp(+(value + 0.1).toFixed(2), 0.35, 1.6))}>+</button></div>
@@ -986,7 +1026,7 @@ export default function App() {
         </div>
 
         <div className="structure-bar">
-          <div className="scope-control"><span>SCOPE</span><select value={scopeMode} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setScopeMode(event.target.value as ScopeMode)}><option value="frame">Frame</option><option value="selection">Selection</option><option value="branch">Branch</option><option value="framework">Framework</option></select></div>
+          <div className="scope-control"><span>SCOPE</span><select value={scopeMode} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setScopeMode(event.target.value as ScopeMode)}><option value="frame">Element</option><option value="selection">Selection</option><option value="branch">Path</option><option value="framework">Framework</option></select></div>
           <div className="structure-actions">
             {STRUCTURAL_OPERATIONS.map(([operation, operationLabel]) => <button key={operation} onClick={() => void runStructuralOperation(operation)} disabled={status === 'THINKING' || status === 'RUNNING'}>{operationLabel}</button>)}
           </div>
@@ -1030,7 +1070,7 @@ export default function App() {
                       onPointerDown={(event: React.PointerEvent<SVGPathElement>) => event.stopPropagation()}
                       onClick={(event: React.MouseEvent<SVGPathElement>) => { event.stopPropagation(); setSelectedFrameIds([]); setSelectedConnectionId(connection.id); }}
                     />
-                    {selected && semantic && <text className="connection-label" x={geometry.mid.x} y={geometry.mid.y - 9} textAnchor="middle">{label(connection.meaning ?? 'depends-on')}</text>}
+                    {selected && semantic && <text className="connection-label" x={geometry.mid.x} y={geometry.mid.y - 9} textAnchor="middle">{relationshipLabel(connection.meaning ?? 'depends-on')}</text>}
                     {selected && (
                       <g
                         className="connection-remove"
@@ -1055,7 +1095,7 @@ export default function App() {
                 const active = run?.activeFrameId === frame.id;
                 const selected = selectedFrameIds.includes(frame.id);
                 const body = active ? 'Running…' : step?.status === 'ok' ? short(step.output) : step?.status === 'error' ? 'Execution stopped' : frame.kind === 'asset' ? short(frame.value) : frame.body || '';
-                const meta = active ? 'RUNNING' : step ? `${step.durationMs}ms` : frame.epistemicState ? label(frame.epistemicState) : frame.outputs[0]?.type ?? 'result';
+                const meta = active ? 'RUNNING' : step ? `${step.durationMs}ms` : frame.epistemicState ? stateLabel(frame.epistemicState) : 'UNASSESSED';
                 const children = childrenByParent.get(frame.id) ?? [];
                 const parent = frame.parentId ? frameMap.get(frame.parentId) : undefined;
                 return (
@@ -1069,7 +1109,7 @@ export default function App() {
                     onPointerUp={onFramePointerUp}
                     onDoubleClick={() => { setSelectedFrameIds([frame.id]); setSideMode('frame'); }}
                   >
-                    <div className="frame-index">{label(frame.role ?? KIND_LABELS[frame.kind])}</div>
+                    <div className="frame-index">{frame.role ? roleLabel(frame.role) : KIND_LABELS[frame.kind]}</div>
                     <div className="frame-title">{frame.title}</div>
                     <div className="frame-body">{body}</div>
                     <div className="frame-meta"><span>{meta}</span><span>{frame.operation === 'MODEL' ? 'ONLINE' : 'LOCAL'}</span></div>
@@ -1081,7 +1121,7 @@ export default function App() {
                         data-port="in"
                         data-frame-id={frame.id}
                         data-port-id={port.id}
-                        title={`${port.name}: ${port.type}`}
+                        title="Connect into this element"
                         className={`port port-in${wire ? compatible(wire.outputType, port.type) && wire.fromFrame !== frame.id ? ' can-connect' : ' cannot-connect' : ''}`}
                         style={{ top: 54 + index * 22 }}
                         onPointerDown={(event: React.PointerEvent<HTMLButtonElement>) => event.stopPropagation()}
@@ -1093,7 +1133,7 @@ export default function App() {
                         data-port="out"
                         data-frame-id={frame.id}
                         data-port-id={port.id}
-                        title={`${port.name}: ${port.type}`}
+                        title="Connect from this element"
                         className="port port-out"
                         style={{ top: 54 + index * 22 }}
                         onPointerDown={(event: React.PointerEvent<HTMLButtonElement>) => startWire(event, frame, port, index)}
@@ -1159,43 +1199,43 @@ function FrameInspector({ frame, step, selectedCount, childCount, onClose, onCha
   onRelease: () => void;
   onToggleCollapse: () => void;
 }) {
-  const bodyLabel = { asset: 'Data', instruction: 'Order', expression: 'Logic', check: 'Check', output: 'Content' }[frame.kind];
+  const bodyLabel = { asset: 'Content', instruction: 'Instruction', expression: 'Rule', check: 'Test', output: 'Finding' }[frame.kind];
   return <>
-    <div className="inspector-head"><div><span>FRAME</span><strong>{frame.title}</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
+    <div className="inspector-head"><div><span>ELEMENT</span><strong>{frame.title}</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
     <label className="field"><span>Name</span><input value={frame.title} onChange={(event: React.ChangeEvent<HTMLInputElement>) => onChange({ title: event.target.value })} /></label>
     <div className="dual-field">
-      <label className="field"><span>Role</span><select value={frame.role ?? 'concept'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ role: event.target.value as FrameRole })}>{ROLES.map(role => <option key={role} value={role}>{label(role)}</option>)}</select></label>
-      <label className="field"><span>State</span><select value={frame.epistemicState ?? 'unknown'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ epistemicState: event.target.value as EpistemicState })}>{STATES.map(state => <option key={state} value={state}>{label(state)}</option>)}</select></label>
+      <label className="field"><span>Element Type</span><select value={frame.role ?? 'concept'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ role: event.target.value as FrameRole })}>{ROLES.map(role => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
+      <label className="field"><span>State</span><select value={frame.epistemicState ?? 'unknown'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ epistemicState: event.target.value as EpistemicState })}>{STATES.map(state => <option key={state} value={state}>{stateLabel(state)}</option>)}</select></label>
     </div>
-    {frame.kind === 'instruction' && <div className="order-block"><span>Orders</span><div className="order-list">{FRAME_ORDERS.map(order => <button key={order.id} className={frame.orderPreset === order.id ? 'active' : ''} onClick={() => onChange({ title: order.title, body: order.prompt, operation: 'MODEL', orderPreset: order.id })}>{order.title}</button>)}</div></div>}
+    {frame.kind === 'instruction' && <div className="order-block"><span>Methods</span><div className="order-list">{FRAME_ORDERS.map(order => <button key={order.id} className={frame.orderPreset === order.id ? 'active' : ''} onClick={() => onChange({ title: order.title, body: order.prompt, operation: 'MODEL', orderPreset: order.id })}>{order.title}</button>)}</div></div>}
     {frame.kind !== 'output' && <label className="field"><span>{bodyLabel}</span><textarea value={String(frame.kind === 'asset' ? frame.value ?? '' : frame.body)} onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => frame.kind === 'asset' ? onChange({ value: event.target.value }) : onChange({ body: event.target.value, orderPreset: '' })} /></label>}
-    {(frame.kind === 'instruction' || frame.kind === 'expression') && <div className="seg-field"><span>Mode</span><div className="seg"><button className={frame.operation === 'DETERMINISTIC' ? 'active' : ''} onClick={() => onChange({ operation: 'DETERMINISTIC' })}>Local</button><button className={frame.operation === 'MODEL' ? 'active' : ''} onClick={() => onChange({ operation: 'MODEL' })}>Online</button></div></div>}
-    {frame.kind === 'expression' && <div className="seg-field"><span>Behavior</span><div className="seg"><button className={frame.expressionClass === 'EXECUTABLE' ? 'active' : ''} onClick={() => onChange({ expressionClass: 'EXECUTABLE' })}>Run</button><button className={frame.expressionClass === 'DESCRIPTIVE' ? 'active' : ''} onClick={() => onChange({ expressionClass: 'DESCRIPTIVE' })}>Note</button></div></div>}
-    <div className="hierarchy-block"><span>Hierarchy</span><p>{frame.parentId ? 'Contained by another Frame.' : 'Top level Frame.'}{childCount ? ` Contains ${childCount}.` : ''}</p>{selectedCount > 1 && <button onClick={onContain}>Contain selection in active Frame</button>}{frame.parentId && <button onClick={onRelease}>Release from parent</button>}{childCount > 0 && <button onClick={onToggleCollapse}>{frame.collapsed ? 'Expand children' : 'Collapse children'}</button>}</div>
-    <div className="io-block"><span>Connections</span>{[...frame.inputs.map(port => `IN  ${port.name}:${port.type}`), ...frame.outputs.map(port => `OUT ${port.name}:${port.type}`)].map(text => <code key={text}>{text}</code>)}</div>
+    {(frame.kind === 'instruction' || frame.kind === 'expression') && <div className="seg-field"><span>Processing</span><div className="seg"><button className={frame.operation === 'DETERMINISTIC' ? 'active' : ''} onClick={() => onChange({ operation: 'DETERMINISTIC' })}>Local</button><button className={frame.operation === 'MODEL' ? 'active' : ''} onClick={() => onChange({ operation: 'MODEL' })}>Model</button></div></div>}
+    {frame.kind === 'expression' && <div className="seg-field"><span>Use As</span><div className="seg"><button className={frame.expressionClass === 'EXECUTABLE' ? 'active' : ''} onClick={() => onChange({ expressionClass: 'EXECUTABLE' })}>Active Rule</button><button className={frame.expressionClass === 'DESCRIPTIVE' ? 'active' : ''} onClick={() => onChange({ expressionClass: 'DESCRIPTIVE' })}>Descriptive Note</button></div></div>}
+    <div className="hierarchy-block"><span>Structure</span><p>{frame.parentId ? 'Inside another element.' : 'Top level element.'}{childCount ? ` Contains ${childCount}.` : ''}</p>{selectedCount > 1 && <button onClick={onContain}>Group selection inside active element</button>}{frame.parentId && <button onClick={onRelease}>Move out of group</button>}{childCount > 0 && <button onClick={onToggleCollapse}>{frame.collapsed ? 'Show contained elements' : 'Hide contained elements'}</button>}</div>
+    <div className="io-block"><span>Relationships</span>{[...frame.inputs.map(port => `Receives · ${port.name}`), ...frame.outputs.map(port => `Leads to · ${port.name}`)].map(text => <code key={text}>{text}</code>)}</div>
     <div className="provenance-block"><span>Origin</span><b>{label(frame.provenance?.origin ?? 'user')}</b>{frame.provenance?.source && <small>{frame.provenance.source}</small>}</div>
-    <div className="trace-block"><span>Last run</span>{step ? <><b className={`trace-state trace-${step.status}`}>{step.status === 'ok' ? 'DONE' : 'ERROR'}</b><dl><dt>Input</dt><dd>{short(step.input, 180)}</dd><dt>Order</dt><dd>{frame.body || 'Local operation'}</dd><dt>Output</dt><dd>{short(step.output, 180)}</dd><dt>Executor</dt><dd>{step.executor === 'MODEL' ? 'Online model' : 'Local'}</dd>{step.error && <><dt>Error</dt><dd>{step.error}</dd></>}</dl></> : <em>Not run</em>}</div>
-    <button className="inspector-run" onClick={onRun}>Run Frame</button>
+    <div className="trace-block"><span>Last run</span>{step ? <><b className={`trace-state trace-${step.status}`}>{step.status === 'ok' ? 'DONE' : 'ERROR'}</b><dl><dt>Received</dt><dd>{short(step.input, 180)}</dd><dt>Instruction</dt><dd>{frame.body || 'Local process'}</dd><dt>Produced</dt><dd>{short(step.output, 180)}</dd><dt>Processing</dt><dd>{step.executor === 'MODEL' ? 'Model' : 'Local'}</dd>{step.error && <><dt>Error</dt><dd>{step.error}</dd></>}</dl></> : <em>Not run</em>}</div>
+    <button className="inspector-run" onClick={onRun}>Run Element</button>
     <button className="delete-btn" onClick={onDelete}>Delete</button>
   </>;
 }
 
 function ProposalInspector({ proposal, onAccept, onReject, onClose }: { proposal: Proposal; onAccept: () => void; onReject: () => void; onClose: () => void }) {
   return <>
-    <div className="inspector-head"><div><span>PROPOSAL</span><strong>{label(proposal.operation)}</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
+    <div className="inspector-head"><div><span>SUGGESTED CHANGE</span><strong>{STRUCTURAL_OPERATIONS.find(([operation]) => operation === proposal.operation)?.[1] ?? label(proposal.operation)}</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
     <p className="proposal-summary">{proposal.summary}</p>
-    <div className="proposal-list">{proposal.additions.length ? proposal.additions.map(item => <article key={item.tempId}><span>{label(item.role ?? 'concept')}</span><strong>{item.title}</strong>{item.body && <p>{item.body}</p>}<small>{item.relationshipToAnchor ? label(item.relationshipToAnchor) : 'No relationship specified'}</small></article>) : <p className="empty-copy">No structural addition was proposed.</p>}</div>
-    <button className="inspector-run" onClick={onAccept}>{proposal.operation === 'compress' ? 'Create Framework' : 'Accept Proposal'}</button>
-    <button className="delete-btn" onClick={onReject}>Reject</button>
+    <div className="proposal-list">{proposal.additions.length ? proposal.additions.map(item => <article key={item.tempId}><span>{roleLabel(item.role ?? 'concept')}</span><strong>{item.title}</strong>{item.body && <p>{item.body}</p>}<small>{item.relationshipToAnchor ? relationshipLabel(item.relationshipToAnchor) : 'No relationship specified'}</small></article>) : <p className="empty-copy">No structural addition was proposed.</p>}</div>
+    <button className="inspector-run" onClick={onAccept}>{proposal.operation === 'compress' ? 'Create Framework' : 'Apply Changes'}</button>
+    <button className="delete-btn" onClick={onReject}>Dismiss</button>
   </>;
 }
 
 function IssuesInspector({ issues, executionIssues, onSelect, onClose }: { issues: ReturnType<typeof lintFramework>; executionIssues: string[]; onSelect: (ids: string[]) => void; onClose: () => void }) {
   return <>
-    <div className="inspector-head"><div><span>FRAMEWORK</span><strong>Issues</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
-    {!issues.length && !executionIssues.length && <p className="empty-copy">No current issues.</p>}
+    <div className="inspector-head"><div><span>FRAMEWORK</span><strong>Checks</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
+    {!issues.length && !executionIssues.length && <p className="empty-copy">No current concerns.</p>}
     <div className="issue-list">
-      {executionIssues.map((message, index) => <article key={`execution-${index}`} className="issue error"><span>EXECUTION</span><p>{message}</p></article>)}
+      {executionIssues.map((message, index) => <article key={`execution-${index}`} className="issue error"><span>RUN</span><p>{message}</p></article>)}
       {issues.map(issue => <button key={issue.id} className={`issue ${issue.severity}`} onClick={() => onSelect(issue.frameIds)}><span>{issue.code.replaceAll('_', ' ')}</span><p>{issue.message}</p></button>)}
     </div>
   </>;
@@ -1204,18 +1244,18 @@ function IssuesInspector({ issues, executionIssues, onSelect, onClose }: { issue
 function RunsInspector({ runs, activeRun, onSelect, onClose }: { runs: FrameworkRun[]; activeRun: FrameworkRun | null; onSelect: (run: FrameworkRun) => void; onClose: () => void }) {
   return <>
     <div className="inspector-head"><div><span>FRAMEWORK</span><strong>Runs</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
-    {!runs.length && <p className="empty-copy">No saved Runs yet.</p>}
-    <div className="run-list">{runs.map(item => <button key={item.id} className={activeRun?.id === item.id ? 'active' : ''} onClick={() => onSelect(item)}><span>{item.status.toUpperCase()}</span><strong>{new Date(item.startedAt).toLocaleString()}</strong><small>{item.steps.length} steps</small></button>)}</div>
-    {activeRun && <div className="run-detail"><span>Selected Run</span>{activeRun.steps.map(step => <article key={step.frameId}><b>{step.frameId}</b><small>{step.status.toUpperCase()} · {step.durationMs}ms</small><p>{short(step.output ?? step.error, 220)}</p></article>)}</div>}
+    {!runs.length && <p className="empty-copy">No saved runs yet.</p>}
+    <div className="run-list">{runs.map(item => <button key={item.id} className={activeRun?.id === item.id ? 'active' : ''} onClick={() => onSelect(item)}><span>{item.status.toUpperCase()}</span><strong>{new Date(item.startedAt).toLocaleString()}</strong><small>{item.steps.length} elements</small></button>)}</div>
+    {activeRun && <div className="run-detail"><span>Selected run</span>{activeRun.steps.map(step => <article key={step.frameId}><b>{step.frameId}</b><small>{step.status.toUpperCase()} · {step.durationMs}ms</small><p>{short(step.output ?? step.error, 220)}</p></article>)}</div>}
   </>;
 }
 
 function FrameworkInspector({ framework, pendingProposals, transformations, onOpenProposal, onOpenIssues, onOpenRuns }: { framework: FrameworkDocument; pendingProposals: number; transformations: number; onOpenProposal: () => void; onOpenIssues: () => void; onOpenRuns: () => void }) {
   return <div className="framework-inspector">
     <div className="inspector-head"><div><span>FRAMEWORK</span><strong>{framework.name}</strong></div></div>
-    <dl><dt>Goal</dt><dd>{label(framework.goal ?? 'understand')}</dd><dt>Version</dt><dd>{framework.version ?? 1}</dd><dt>Frames</dt><dd>{framework.frames.length}</dd><dt>Relationships</dt><dd>{framework.connections.length}</dd><dt>Transformations</dt><dd>{transformations}</dd></dl>
-    {pendingProposals > 0 && <button className="panel-action" onClick={onOpenProposal}>Review Proposal</button>}
-    <button className="panel-action" onClick={onOpenIssues}>Inspect Issues</button>
+    <dl><dt>Goal</dt><dd>{label(framework.goal ?? 'understand')}</dd><dt>Version</dt><dd>{framework.version ?? 1}</dd><dt>Elements</dt><dd>{framework.frames.length}</dd><dt>Relationships</dt><dd>{framework.connections.length}</dd><dt>Transformations</dt><dd>{transformations}</dd></dl>
+    {pendingProposals > 0 && <button className="panel-action" onClick={onOpenProposal}>Review Suggested Change</button>}
+    <button className="panel-action" onClick={onOpenIssues}>Inspect Checks</button>
     <button className="panel-action" onClick={onOpenRuns}>Inspect Runs</button>
   </div>;
 }
