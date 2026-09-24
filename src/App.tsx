@@ -419,10 +419,11 @@ export default function App() {
 
   const openPanel = useCallback((mode: SideMode) => {
     setRelationshipPickMode(false);
-    setStatus(current => current === 'SELECT 2' ? 'READY' : current);
+    setTapConnect(null);
+    setStatus(current => current === 'SELECT 2' || current === 'CHOOSE INPUT' ? 'READY' : current);
     setSideMode(mode);
     setPanelOpen(true);
-  }, [tapConnect]);
+  }, []);
 
   const closePanel = useCallback(() => setPanelOpen(false), []);
 
@@ -1172,7 +1173,7 @@ export default function App() {
     panRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: stage.scrollLeft, top: stage.scrollTop };
     stage.classList.add('panning');
     stage.setPointerCapture(event.pointerId);
-  }, []);
+  }, [tapConnect]);
 
   const onStagePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const pan = panRef.current;
@@ -1354,7 +1355,7 @@ export default function App() {
                     <div className="frame-title">{frame.title}</div>
                     <div className="frame-index">{frameFormalTerm(frame)}</div>
                     <div className="frame-body">{body}</div>
-                    <div className="frame-meta"><span>{meta}</span><span>{frame.operation === 'MODEL' ? 'EXTERNAL RESPONSE' : 'DIRECT'}</span></div>
+                    <div className="frame-meta"><span>{meta}</span><span>{frame.operation === 'MODEL' ? 'EXTERNAL RESPONSE SYSTEM' : 'DIRECT'}</span></div>
                     {parent && <span className="frame-parent">inside {parent.title}</span>}
                     {children.length > 0 && <button className="frame-collapse" onClick={(event: React.MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); toggleCollapsed(frame.id); }}>{frame.collapsed ? `+${children.length}` : `−${children.length}`}</button>}
                     {frame.inputs.map((port, index) => (
@@ -1552,13 +1553,13 @@ function FrameInspector({ frame, step, selectedCount, childCount, onClose, onCha
     </div>
     {frame.kind === 'instruction' && <div className="order-block"><span>Methods</span><div className="order-list">{FRAME_ORDERS.map(order => <button key={order.id} className={frame.orderPreset === order.id ? 'active' : ''} onClick={() => onChange({ title: order.title, body: order.prompt, operation: 'MODEL', orderPreset: order.id })}>{order.title}</button>)}</div></div>}
     {frame.kind !== 'output' && <label className="field"><span>{bodyLabel}</span><textarea value={String(frame.kind === 'asset' ? frame.value ?? '' : frame.body)} onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => frame.kind === 'asset' ? onChange({ value: event.target.value }) : onChange({ body: event.target.value, orderPreset: '' })} /></label>}
-    <div className="seg-field"><span>Response</span><div className="seg"><button className={frame.operation === 'DETERMINISTIC' ? 'active' : ''} onClick={() => onChange({ operation: 'DETERMINISTIC' })}>Direct</button><button className={frame.operation === 'MODEL' ? 'active' : ''} onClick={() => onChange({ operation: 'MODEL', body: frame.body || `Respond using ${frame.title} as the active perspective.` })}>External Response</button></div></div>
+    <div className="seg-field"><span>Response</span><div className="seg"><button className={frame.operation === 'DETERMINISTIC' ? 'active' : ''} onClick={() => onChange({ operation: 'DETERMINISTIC' })}>Direct</button><button className={frame.operation === 'MODEL' ? 'active' : ''} onClick={() => onChange({ operation: 'MODEL', body: frame.body || `Respond using ${frame.title} as the active perspective.` })}>External Response System</button></div></div>
     {frame.kind === 'asset' && frame.operation === 'MODEL' && <label className="field"><span>Instruction</span><textarea value={frame.body} onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => onChange({ body: event.target.value, orderPreset: '' })} /></label>}}
     {frame.kind === 'expression' && <div className="seg-field"><span>Use As</span><div className="seg"><button className={frame.expressionClass === 'EXECUTABLE' ? 'active' : ''} onClick={() => onChange({ expressionClass: 'EXECUTABLE' })}>Active Rule</button><button className={frame.expressionClass === 'DESCRIPTIVE' ? 'active' : ''} onClick={() => onChange({ expressionClass: 'DESCRIPTIVE' })}>Descriptive Note</button></div></div>}
     <div className="hierarchy-block"><span>Structure</span><p>{frame.parentId ? 'Inside another element.' : 'Top level element.'}{childCount ? ` Contains ${childCount}.` : ''}</p>{selectedCount > 1 && <button onClick={onContain}>Group selection inside active element</button>}{frame.parentId && <button onClick={onRelease}>Move out of group</button>}{childCount > 0 && <button onClick={onToggleCollapse}>{frame.collapsed ? 'Show contained elements' : 'Hide contained elements'}</button>}</div>
     <div className="io-block"><span>Relationships</span>{[...frame.inputs.map(port => `Receives · ${port.name}`), ...frame.outputs.map(port => `Leads to · ${port.name}`)].map(text => <code key={text}>{text}</code>)}</div>
     <div className="provenance-block"><span>Origin</span><b>{label(frame.provenance?.origin ?? 'user')}</b>{frame.provenance?.source && <small>{frame.provenance.source}</small>}</div>
-    <div className="trace-block"><span>Last run</span>{step ? <><b className={`trace-state trace-${step.status}`}>{step.status === 'ok' ? 'DONE' : 'ERROR'}</b><dl><dt>Received</dt><dd>{short(step.input, 180)}</dd><dt>Instruction</dt><dd>{frame.body || 'Local process'}</dd><dt>Produced</dt><dd>{short(step.output, 180)}</dd><dt>Response</dt><dd>{step.executor === 'MODEL' ? 'External Response' : 'Direct'}</dd>{step.error && <><dt>Error</dt><dd>{step.error}</dd></>}</dl></> : <em>Not run</em>}</div>
+    <div className="trace-block"><span>Last run</span>{step ? <><b className={`trace-state trace-${step.status}`}>{step.status === 'ok' ? 'DONE' : 'ERROR'}</b><dl><dt>Received</dt><dd>{short(step.input, 180)}</dd><dt>Instruction</dt><dd>{frame.body || 'Local process'}</dd><dt>Produced</dt><dd>{short(step.output, 180)}</dd><dt>Response</dt><dd>{step.executor === 'MODEL' ? 'External Response System' : 'Direct'}</dd>{step.error && <><dt>Error</dt><dd>{step.error}</dd></>}</dl></> : <em>Not run</em>}</div>
     <button className="inspector-run" onClick={onRun}>Run This Node</button>
     <button className="delete-btn" onClick={onDelete}>Delete</button>
   </>;
