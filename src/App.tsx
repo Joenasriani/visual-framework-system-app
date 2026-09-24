@@ -144,6 +144,80 @@ const FEATURED_ELEMENT_IDS = ['thought', 'feeling', 'behavior', 'context', 'evid
 const FEATURED_ELEMENT_PRESETS = FEATURED_ELEMENT_IDS.map(id => ELEMENT_PRESETS.find(preset => preset.id === id)!).filter(Boolean);
 const ELEMENT_CATEGORIES: ElementPreset['category'][] = ['Mind & Experience', 'Behavior & Context', 'People & Society', 'Research & Reasoning', 'Framework Tools'];
 
+const ELEMENT_EXPLANATIONS: Record<string, string> = {
+  thought: 'What you think.',
+  feeling: 'What you feel.',
+  belief: 'What you hold to be true.',
+  expectation: 'What you expect may happen.',
+  attention: 'What your mind is focused on.',
+  perception: 'How something is noticed or understood.',
+  motivation: 'What moves you toward or away from action.',
+  goal: 'What you are trying to reach.',
+  intention: 'What you plan or mean to do.',
+  sensation: 'What you notice through your body or senses.',
+  trigger: 'What sets a response in motion.',
+  behavior: 'What a person does.',
+  habit: 'A response that tends to repeat.',
+  context: 'What is happening around the person or group.',
+  consequence: 'What happens after a response.',
+  outcome: 'What results from the situation or action.',
+  person: 'A person taking part in the situation.',
+  group: 'People acting or being understood together.',
+  'social-role': 'The expected part a person has in a social setting.',
+  norm: 'What a group treats as expected or usual.',
+  status: 'A person or group position within a social setting.',
+  identity: 'How a person or group understands who they are.',
+  institution: 'An organized social structure with shared rules and roles.',
+  community: 'People connected by place, identity, activity, or belonging.',
+  culture: 'Shared meanings, practices, and expectations.',
+  resource: 'Something people can use, exchange, or rely on.',
+  power: 'The ability to shape what others can do or receive.',
+  question: 'Something you want to understand.',
+  observation: 'Something directly noticed or recorded.',
+  claim: 'A statement being considered.',
+  evidence: 'Information used to support or challenge an explanation.',
+  hypothesis: 'A possible explanation that can be examined.',
+  assumption: 'Something being treated as true for now.',
+  mechanism: 'A proposed way one thing brings about another.',
+  prediction: 'What should be observed if an explanation holds.',
+  'alternative-explanation': 'Another possible way to understand the same situation.',
+  counterargument: 'A reason to challenge the current explanation.',
+  limit: 'A condition where the explanation may stop applying.',
+  unknown: 'Something that is not yet known.',
+  gap: 'Something important that is still missing.',
+  conclusion: 'What the current reasoning leads to.',
+  process: 'A response or change that happens through this step.',
+  rule: 'A condition that changes what happens next.',
+  test: 'A check used to examine the current response.',
+  'run-result': 'What the completed response path produced.'
+};
+
+const presetForFrame = (frame: Frame) => ELEMENT_PRESETS.find(preset => preset.label.toLowerCase() === frame.title.trim().toLowerCase());
+const frameFormalTerm = (frame: Frame) => presetForFrame(frame)?.technical ?? roleLabel(frame.role ?? 'concept');
+const framePlainExplanation = (frame: Frame) => {
+  const preset = presetForFrame(frame);
+  if (preset) return ELEMENT_EXPLANATIONS[preset.id] ?? 'A part of the current behavior or social situation.';
+  const role = frame.role ?? 'concept';
+  const byRole: Partial<Record<FrameRole, string>> = {
+    claim: 'A statement being considered.',
+    question: 'Something you want to understand.',
+    assumption: 'Something being treated as true for now.',
+    evidence: 'Information used to support or challenge an explanation.',
+    observation: 'Something directly noticed or recorded.',
+    perspective: 'A point of view used to understand the situation.',
+    cause: 'Something that may help bring about a response.',
+    effect: 'Something that happens as a result.',
+    decision: 'A choice being considered or made.',
+    hypothesis: 'A possible explanation that can be examined.',
+    alternative: 'Another possible way to understand the situation.',
+    unknown: 'Something that is not yet known.',
+    contradiction: 'Two ideas or observations that do not fit together.',
+    result: 'What the current path leads to.',
+    instruction: 'A response step with its own instruction.'
+  };
+  return byRole[role] ?? 'A part of the current behavior or social situation.';
+};
+
 interface RelationshipPreset {
   meaning: RelationshipMeaning;
   label: string;
@@ -254,15 +328,15 @@ function makeFrame(kind: FrameKind, x: number, y: number): Frame {
     return { id, kind, role: 'concept', epistemicState: 'unknown', provenance, title: 'Concept', operation: 'DETERMINISTIC', x, y, inputs: [], outputs: [{ id: 'out', name: 'value', type: 'any' }], body: '', value: 'New concept' };
   }
   if (kind === 'instruction') {
-    return { id, kind, role: 'instruction', epistemicState: 'known', provenance, title: 'Process', operation: 'MODEL', x, y, inputs: [{ id: 'in', name: 'input', type: 'any' }], outputs: [{ id: 'out', name: 'result', type: 'any' }], body: 'Transform the input.' };
+    return { id, kind, role: 'instruction', epistemicState: 'known', provenance, title: 'Process', operation: 'MODEL', x, y, inputs: [{ id: 'in', name: 'stimulus', type: 'any' }], outputs: [{ id: 'out', name: 'response', type: 'any' }], body: 'Respond to the current stimulus.' };
   }
   if (kind === 'expression') {
-    return { id, kind, role: 'evaluation', epistemicState: 'known', provenance, title: 'Rule', operation: 'DETERMINISTIC', expressionClass: 'EXECUTABLE', x, y, inputs: [{ id: 'in', name: 'input', type: 'text' }], outputs: [{ id: 'out', name: 'value', type: 'boolean' }], body: 'notEmpty(input)' };
+    return { id, kind, role: 'evaluation', epistemicState: 'known', provenance, title: 'Rule', operation: 'DETERMINISTIC', expressionClass: 'EXECUTABLE', x, y, inputs: [{ id: 'in', name: 'stimulus', type: 'text' }], outputs: [{ id: 'out', name: 'response', type: 'boolean' }], body: 'notEmpty(input)' };
   }
   if (kind === 'check') {
-    return { id, kind, role: 'evaluation', epistemicState: 'known', provenance, title: 'Test', operation: 'DETERMINISTIC', x, y, inputs: [{ id: 'in', name: 'input', type: 'any' }], outputs: [{ id: 'out', name: 'valid', type: 'boolean' }], body: 'Pass if truthy' };
+    return { id, kind, role: 'evaluation', epistemicState: 'known', provenance, title: 'Test', operation: 'DETERMINISTIC', x, y, inputs: [{ id: 'in', name: 'stimulus', type: 'any' }], outputs: [{ id: 'out', name: 'response', type: 'boolean' }], body: 'Check whether the current stimulus meets this condition.' };
   }
-  return { id, kind, role: 'result', epistemicState: 'inferred', provenance, title: 'Outcome', operation: 'DETERMINISTIC', x, y, inputs: [{ id: 'in', name: 'input', type: 'any' }], outputs: [], body: '' };
+  return { id, kind, role: 'result', epistemicState: 'inferred', provenance, title: 'Outcome', operation: 'DETERMINISTIC', x, y, inputs: [{ id: 'in', name: 'stimulus', type: 'any' }], outputs: [], body: '' };
 }
 
 interface DragState {
@@ -322,6 +396,7 @@ export default function App() {
   const [scale, setScale] = useState(1);
   const [wire, setWire] = useState<WireState | null>(null);
   const wireRef = useRef<WireState | null>(null);
+  const [tapConnect, setTapConnect] = useState<WireState | null>(null);
   const [newConnectionId, setNewConnectionId] = useState<string | null>(null);
   const [removingConnectionId, setRemovingConnectionId] = useState<string | null>(null);
   const [cableMotion, setCableMotion] = useState<{ frameId: string; x: number; y: number } | null>(null);
@@ -344,7 +419,8 @@ export default function App() {
 
   const openPanel = useCallback((mode: SideMode) => {
     setRelationshipPickMode(false);
-    setStatus(current => current === 'SELECT 2' ? 'READY' : current);
+    setTapConnect(null);
+    setStatus(current => current === 'SELECT 2' || current === 'CHOOSE INPUT' ? 'READY' : current);
     setSideMode(mode);
     setPanelOpen(true);
   }, []);
@@ -424,6 +500,18 @@ export default function App() {
   const frameMap = useMemo(() => new Map(framework.frames.map(frame => [frame.id, frame])), [framework.frames]);
   const stepMap = useMemo(() => new Map((run?.steps ?? []).map(step => [step.frameId, step])), [run]);
   const selectedFrame = selectedFrameId ? frameMap.get(selectedFrameId) ?? null : null;
+  const selectedConnection = selectedConnectionId ? framework.connections.find(connection => connection.id === selectedConnectionId) ?? null : null;
+
+  const startSelectedFlow = useCallback(() => {
+    if (!selectedFrame?.outputs.length) return;
+    const port = selectedFrame.outputs[0];
+    const point = portCenter(selectedFrame, 'out', 0);
+    const next: WireState = { fromFrame: selectedFrame.id, fromPort: port.id, outputType: port.type, x1: point.x, y1: point.y, x2: point.x, y2: point.y };
+    setTapConnect(current => current?.fromFrame === next.fromFrame && current.fromPort === next.fromPort ? null : next);
+    setSelectedConnectionId(null);
+    setPanelOpen(false);
+    setStatus(current => current === 'CHOOSE INPUT' ? 'READY' : 'CHOOSE INPUT');
+  }, [selectedFrame]);
   const lintIssues = useMemo(() => lintFramework(framework), [framework]);
   const executionIssues = useMemo(() => validateFramework(framework), [framework]);
   const activeProposal = useMemo(() => [...(framework.proposals ?? [])].reverse().find(item => item.status === 'pending') ?? null, [framework.proposals]);
@@ -471,8 +559,10 @@ export default function App() {
       title: preset.label,
       role: preset.role,
       epistemicState: preset.epistemicState ?? 'unknown',
+      inputs: preset.kind === 'asset' ? [{ id: 'in', name: 'stimulus', type: 'any' }] : base.inputs,
+      outputs: preset.kind === 'asset' ? [{ id: 'out', name: 'response', type: 'any' }] : base.outputs,
       value: preset.kind === 'asset' ? preset.technical : base.value,
-      body: preset.kind === 'instruction' ? 'Describe the process or transformation.' : base.body
+      body: preset.kind === 'instruction' ? 'Describe the response or change.' : base.body
     };
     changeFramework(current => ({ ...current, version: (current.version ?? 1) + 1, updatedAt: new Date().toISOString(), frames: [...current.frames, frame] }), { label: `Add ${preset.label}` });
     setSelectedConnectionId(null);
@@ -683,9 +773,16 @@ export default function App() {
     event.preventDefault();
     const point = portCenter(frame, 'out', portIndex);
     const next: WireState = { fromFrame: frame.id, fromPort: port.id, outputType: port.type, x1: point.x, y1: point.y, x2: point.x, y2: point.y };
+    setSelectedConnectionId(null);
+    if (event.pointerType === 'touch' || event.pointerType === 'pen') {
+      setTapConnect(current => current?.fromFrame === frame.id && current.fromPort === port.id ? null : next);
+      setWire(null);
+      wireRef.current = null;
+      setStatus(current => current === 'CHOOSE INPUT' ? 'READY' : 'CHOOSE INPUT');
+      return;
+    }
     wireRef.current = next;
     setWire(next);
-    setSelectedConnectionId(null);
     setStatus('CONNECT');
   }, []);
 
@@ -758,6 +855,27 @@ export default function App() {
       window.removeEventListener('pointercancel', onUp);
     };
   }, [autoPan, changeFramework, nearestCompatiblePort, scale]);
+
+  const finishTapConnection = useCallback((frame: Frame, port: Port) => {
+    const active = tapConnect;
+    if (!active || frame.id === active.fromFrame || !compatible(active.outputType, port.type)) return;
+    const id = `e-${Date.now()}`;
+    const createdAt = new Date().toISOString();
+    changeFramework(current => ({
+      ...current,
+      version: (current.version ?? 1) + 1,
+      updatedAt: createdAt,
+      connections: [
+        ...current.connections.filter(connection => connection.kind === 'semantic' || !(connection.toFrame === frame.id && connection.toPort === port.id)),
+        { id, fromFrame: active.fromFrame, fromPort: active.fromPort, toFrame: frame.id, toPort: port.id, kind: 'execution', meaning: 'feeds', provenance: { origin: 'user', createdAt } }
+      ]
+    }), { label: 'Connect Response Flow' });
+    setNewConnectionId(id);
+    window.setTimeout(() => setNewConnectionId(null), 340);
+    setTapConnect(null);
+    setStatus('READY');
+    setRun(null);
+  }, [changeFramework, tapConnect]);
 
   const removeConnection = useCallback((id: string) => {
     if (removingConnectionId) return;
@@ -1055,6 +1173,10 @@ export default function App() {
 
   const onStagePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
+    if (tapConnect && !target.closest('[data-port]')) {
+      setTapConnect(null);
+      setStatus('READY');
+    }
     if (target.closest('[data-frame],[data-port],[data-connection-hit],[data-remove-connection]') || wireRef.current) return;
     if (event.button !== 0 && event.button !== 1) return;
     const stage = stageRef.current;
@@ -1064,7 +1186,7 @@ export default function App() {
     panRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: stage.scrollLeft, top: stage.scrollTop };
     stage.classList.add('panning');
     stage.setPointerCapture(event.pointerId);
-  }, []);
+  }, [tapConnect]);
 
   const onStagePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const pan = panRef.current;
@@ -1169,7 +1291,7 @@ export default function App() {
 
         <div
           ref={stageRef}
-          className={`stage${wire ? ' connecting' : ''}`}
+          className={`stage${wire || tapConnect ? ' connecting' : ''}`}
           onPointerDown={onStagePointerDown}
           onPointerMove={onStagePointerMove}
           onPointerUp={endPan}
@@ -1228,8 +1350,8 @@ export default function App() {
                 const step = stepMap.get(frame.id);
                 const active = run?.activeFrameId === frame.id;
                 const selected = selectedFrameIds.includes(frame.id);
-                const body = active ? 'Running…' : step?.status === 'ok' ? short(step.output) : step?.status === 'error' ? 'Run stopped' : frame.kind === 'asset' ? short(frame.value) : frame.body || '';
-                const meta = active ? 'RUNNING' : step ? `${step.durationMs}ms` : frame.epistemicState ? stateLabel(frame.epistemicState) : 'UNASSESSED';
+                const body = active ? 'Responding…' : framePlainExplanation(frame);
+                const meta = active ? 'RESPONDING' : step?.status === 'error' ? 'STOPPED' : frame.epistemicState ? stateLabel(frame.epistemicState) : 'UNASSESSED';
                 const children = childrenByParent.get(frame.id) ?? [];
                 const parent = frame.parentId ? frameMap.get(frame.parentId) : undefined;
                 return (
@@ -1243,10 +1365,10 @@ export default function App() {
                     onPointerUp={onFramePointerUp}
                     onDoubleClick={() => { setSelectedFrameIds([frame.id]); openPanel('frame'); }}
                   >
-                    <div className="frame-index">{frame.role ? roleLabel(frame.role) : KIND_LABELS[frame.kind]}</div>
                     <div className="frame-title">{frame.title}</div>
+                    <div className="frame-index">{frameFormalTerm(frame)}</div>
                     <div className="frame-body">{body}</div>
-                    <div className="frame-meta"><span>{meta}</span><span>{frame.operation === 'MODEL' ? 'MODEL' : 'LOCAL'}</span></div>
+                    <div className="frame-meta"><span>{meta}</span><span>{frame.operation === 'MODEL' ? 'EXTERNAL RESPONSE SYSTEM' : 'DIRECT'}</span></div>
                     {parent && <span className="frame-parent">inside {parent.title}</span>}
                     {children.length > 0 && <button className="frame-collapse" onClick={(event: React.MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); toggleCollapsed(frame.id); }}>{frame.collapsed ? `+${children.length}` : `−${children.length}`}</button>}
                     {frame.inputs.map((port, index) => (
@@ -1256,9 +1378,10 @@ export default function App() {
                         data-frame-id={frame.id}
                         data-port-id={port.id}
                         title="Connect into this element"
-                        className={`port port-in${wire ? compatible(wire.outputType, port.type) && wire.fromFrame !== frame.id ? ' can-connect' : ' cannot-connect' : ''}`}
+                        className={`port port-in${wire || tapConnect ? compatible((wire ?? tapConnect)!.outputType, port.type) && (wire ?? tapConnect)!.fromFrame !== frame.id ? ' can-connect' : ' cannot-connect' : ''}`}
                         style={{ top: 54 + index * 22 }}
                         onPointerDown={(event: React.PointerEvent<HTMLButtonElement>) => event.stopPropagation()}
+                        onClick={(event: React.MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); finishTapConnection(frame, port); }}
                       />
                     ))}
                     {frame.outputs.map((port, index) => (
@@ -1268,7 +1391,7 @@ export default function App() {
                         data-frame-id={frame.id}
                         data-port-id={port.id}
                         title="Connect from this element"
-                        className="port port-out"
+                        className={`port port-out${tapConnect?.fromFrame === frame.id && tapConnect.fromPort === port.id ? ' touch-source' : ''}`}
                         style={{ top: 54 + index * 22 }}
                         onPointerDown={(event: React.PointerEvent<HTMLButtonElement>) => startWire(event, frame, port, index)}
                       />
@@ -1333,9 +1456,17 @@ export default function App() {
         )}
       </aside>
 
+      {selectedConnection && (
+        <div className="connection-actions">
+          <span>{selectedConnection.kind === 'semantic' ? relationshipLabel(selectedConnection.meaning ?? 'depends-on') : 'Response Flow'}</span>
+          <button onClick={() => removeConnection(selectedConnection.id)}>Disconnect</button>
+        </div>
+      )}
+
       <nav className="mobile-action-bar" aria-label="Canvas actions">
         <button onClick={undo} disabled={!pastRef.current.length}><span>↶</span><b>Undo</b></button>
         <button onClick={() => openPanel('library')}><span>＋</span><b>New</b></button>
+        <button className={tapConnect ? 'active' : ''} onClick={startSelectedFlow} disabled={!selectedFrame?.outputs.length}><span>→</span><b>Connect</b></button>
         <button
           className={relationshipPickMode ? 'active' : ''}
           onClick={() => {
@@ -1436,13 +1567,14 @@ function FrameInspector({ frame, step, selectedCount, childCount, onClose, onCha
     </div>
     {frame.kind === 'instruction' && <div className="order-block"><span>Methods</span><div className="order-list">{FRAME_ORDERS.map(order => <button key={order.id} className={frame.orderPreset === order.id ? 'active' : ''} onClick={() => onChange({ title: order.title, body: order.prompt, operation: 'MODEL', orderPreset: order.id })}>{order.title}</button>)}</div></div>}
     {frame.kind !== 'output' && <label className="field"><span>{bodyLabel}</span><textarea value={String(frame.kind === 'asset' ? frame.value ?? '' : frame.body)} onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => frame.kind === 'asset' ? onChange({ value: event.target.value }) : onChange({ body: event.target.value, orderPreset: '' })} /></label>}
-    {(frame.kind === 'instruction' || frame.kind === 'expression') && <div className="seg-field"><span>Processing</span><div className="seg"><button className={frame.operation === 'DETERMINISTIC' ? 'active' : ''} onClick={() => onChange({ operation: 'DETERMINISTIC' })}>Local</button><button className={frame.operation === 'MODEL' ? 'active' : ''} onClick={() => onChange({ operation: 'MODEL' })}>Model</button></div></div>}
+    <div className="seg-field"><span>Response</span><div className="seg"><button className={frame.operation === 'DETERMINISTIC' ? 'active' : ''} onClick={() => onChange({ operation: 'DETERMINISTIC' })}>Direct</button><button className={frame.operation === 'MODEL' ? 'active' : ''} onClick={() => onChange({ operation: 'MODEL', body: frame.body || `Respond using ${frame.title} as the active perspective.` })}>External Response System</button></div></div>
+    {frame.kind === 'asset' && frame.operation === 'MODEL' && <label className="field"><span>Instruction</span><textarea value={frame.body} onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => onChange({ body: event.target.value, orderPreset: '' })} /></label>}
     {frame.kind === 'expression' && <div className="seg-field"><span>Use As</span><div className="seg"><button className={frame.expressionClass === 'EXECUTABLE' ? 'active' : ''} onClick={() => onChange({ expressionClass: 'EXECUTABLE' })}>Active Rule</button><button className={frame.expressionClass === 'DESCRIPTIVE' ? 'active' : ''} onClick={() => onChange({ expressionClass: 'DESCRIPTIVE' })}>Descriptive Note</button></div></div>}
     <div className="hierarchy-block"><span>Structure</span><p>{frame.parentId ? 'Inside another element.' : 'Top level element.'}{childCount ? ` Contains ${childCount}.` : ''}</p>{selectedCount > 1 && <button onClick={onContain}>Group selection inside active element</button>}{frame.parentId && <button onClick={onRelease}>Move out of group</button>}{childCount > 0 && <button onClick={onToggleCollapse}>{frame.collapsed ? 'Show contained elements' : 'Hide contained elements'}</button>}</div>
     <div className="io-block"><span>Relationships</span>{[...frame.inputs.map(port => `Receives · ${port.name}`), ...frame.outputs.map(port => `Leads to · ${port.name}`)].map(text => <code key={text}>{text}</code>)}</div>
     <div className="provenance-block"><span>Origin</span><b>{label(frame.provenance?.origin ?? 'user')}</b>{frame.provenance?.source && <small>{frame.provenance.source}</small>}</div>
-    <div className="trace-block"><span>Last run</span>{step ? <><b className={`trace-state trace-${step.status}`}>{step.status === 'ok' ? 'DONE' : 'ERROR'}</b><dl><dt>Received</dt><dd>{short(step.input, 180)}</dd><dt>Instruction</dt><dd>{frame.body || 'Local process'}</dd><dt>Produced</dt><dd>{short(step.output, 180)}</dd><dt>Processing</dt><dd>{step.executor === 'MODEL' ? 'Model' : 'Local'}</dd>{step.error && <><dt>Error</dt><dd>{step.error}</dd></>}</dl></> : <em>Not run</em>}</div>
-    <button className="inspector-run" onClick={onRun}>Run Element</button>
+    <div className="trace-block"><span>Last run</span>{step ? <><b className={`trace-state trace-${step.status}`}>{step.status === 'ok' ? 'DONE' : 'ERROR'}</b><dl><dt>Received</dt><dd>{short(step.input, 180)}</dd><dt>Instruction</dt><dd>{frame.body || 'Direct response'}</dd><dt>Produced</dt><dd>{short(step.output, 180)}</dd><dt>Response</dt><dd>{step.executor === 'MODEL' ? 'External Response System' : 'Direct'}</dd>{step.error && <><dt>Error</dt><dd>{step.error}</dd></>}</dl></> : <em>Not run</em>}</div>
+    <button className="inspector-run" onClick={onRun}>Run This Node</button>
     <button className="delete-btn" onClick={onDelete}>Delete</button>
   </>;
 }

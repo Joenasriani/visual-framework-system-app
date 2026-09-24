@@ -151,7 +151,7 @@
     grid-column:1;
     grid-row:3;
     display:grid;
-    grid-template-columns:repeat(5,minmax(0,1fr));
+    grid-template-columns:repeat(6,minmax(0,1fr));
     align-items:stretch;
     padding:4px 5px calc(4px + env(safe-area-inset-bottom));
     border-top:1px solid rgba(218,219,225,.94);
@@ -192,4 +192,211 @@
   .selection-count{font-size:8px;padding:3px 5px}
   .fit-action{font-size:9px}
   .zoom span{width:35px}
+}
+
+
+/* Resolve/Fusion-inspired flow surface. Visual only; graph coordinates and node dimensions stay unchanged. */
+.stage{
+  background-color:#1e2024;
+  background-image:radial-gradient(circle at 1px 1px,rgba(208,211,220,.12) 1px,transparent 1.1px);
+}
+.frame{
+  border:1px solid #4a4e56;
+  border-radius:6px;
+  background:#2b2e33;
+  color:#eceef2;
+  padding:12px 14px 10px 16px;
+  box-shadow:0 5px 13px rgba(0,0,0,.32);
+}
+.frame:hover{
+  border-color:#626872;
+  box-shadow:0 7px 18px rgba(0,0,0,.38);
+}
+.frame:before{
+  left:0;
+  top:0;
+  width:100%;
+  height:3px;
+  border-radius:5px 5px 0 0;
+  background:var(--frame-color);
+}
+.frame.selected{
+  border-color:#9aa5ff;
+  box-shadow:0 0 0 2px rgba(117,132,255,.22),0 8px 20px rgba(0,0,0,.4);
+}
+.frame.run-active{
+  box-shadow:0 0 0 2px rgba(224,170,53,.24),0 8px 20px rgba(0,0,0,.4);
+}
+.frame.run-ok{
+  box-shadow:0 0 0 1px rgba(73,185,124,.35),0 6px 16px rgba(0,0,0,.34);
+}
+.frame.run-error{
+  box-shadow:0 0 0 1px rgba(225,96,88,.42),0 6px 16px rgba(0,0,0,.34);
+}
+.frame-title{
+  color:#f4f5f7;
+  font-size:13px;
+  font-weight:720;
+  line-height:1.15;
+  margin-top:2px;
+}
+.frame-index{
+  margin:4px 0 0;
+  color:#aeb3bd;
+  font-size:8px;
+  font-weight:640;
+  letter-spacing:.015em;
+  text-transform:none;
+  max-width:175px;
+}
+.frame-body{
+  margin-top:7px;
+  height:27px;
+  color:#d0d3d9;
+  font:9px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+.frame-meta{
+  margin-top:6px;
+  padding-top:6px;
+  border-top:1px solid #41454c;
+  color:#9298a3;
+  font-size:7px;
+  letter-spacing:.025em;
+  gap:6px;
+}
+.frame-meta span:last-child{
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  max-width:112px;
+}
+.frame-parent{
+  color:#b3b8c2;
+  background:#24262a;
+  padding:2px 5px;
+  border-radius:3px;
+  top:-18px;
+}
+.frame-collapse{
+  border-color:#50545c;
+  background:#363940;
+  color:#d0d3d9;
+  border-radius:4px;
+}
+.frame-collapse:hover{background:#41454d}
+
+.connection-halo{stroke:rgba(255,255,255,.035)}
+.connection-main{stroke:#858b95;stroke-width:1.45}
+.connection-group.semantic .connection-main{stroke:#777d87;stroke-dasharray:4 5}
+.connection-group:hover .connection-main,.connection-group.selected .connection-main{stroke:#a6b0ff;stroke-width:2.1}
+.connection-label{
+  fill:#d7dae0;
+  stroke:#1e2024;
+  stroke-width:5px;
+}
+.wire-live{stroke:#a6b0ff;stroke-width:2}
+.wire-tip{fill:#a6b0ff}
+.connection-hit{stroke-width:24}
+.connection-remove circle{fill:#303339;stroke:#666c75}
+.connection-remove path{stroke:#e0e2e6}
+
+/* Large invisible hit target with a compact visible socket, similar to professional node compositors. */
+.port{
+  width:30px;
+  height:30px;
+  border:0;
+  background:transparent;
+  box-shadow:none;
+  border-radius:50%;
+  transform:translateY(-50%);
+}
+.port:after{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:10px;
+  height:10px;
+  transform:translate(-50%,-50%);
+  border-radius:50%;
+  background:#8d929c;
+  border:2px solid #24262a;
+  box-shadow:0 0 0 1px rgba(255,255,255,.18);
+  transition:transform .12s var(--ease),background .12s var(--ease),box-shadow .12s var(--ease);
+}
+.port-in{left:-15px}
+.port-out{right:-15px}
+.port-out:after{background:var(--frame-color)}
+.port:hover{transform:translateY(-50%)}
+.port:hover:after{transform:translate(-50%,-50%) scale(1.28)}
+.port.can-connect{transform:translateY(-50%);opacity:1}
+.port.can-connect:after{
+  background:#7fe0a8;
+  transform:translate(-50%,-50%) scale(1.38);
+  box-shadow:0 0 0 5px rgba(86,207,137,.16);
+}
+.port.cannot-connect{opacity:.18}
+.port.touch-source:after{
+  background:#a6b0ff;
+  transform:translate(-50%,-50%) scale(1.4);
+  box-shadow:0 0 0 6px rgba(136,149,255,.18);
+}
+
+.connection-actions{
+  position:fixed;
+  left:50%;
+  bottom:18px;
+  transform:translateX(-50%);
+  z-index:97;
+  display:flex;
+  align-items:center;
+  gap:9px;
+  min-height:38px;
+  padding:5px 6px 5px 11px;
+  border:1px solid #50545c;
+  border-radius:8px;
+  background:#292c31;
+  color:#dfe2e7;
+  box-shadow:0 10px 28px rgba(0,0,0,.3);
+}
+.connection-actions span{font-size:9px;font-weight:680}
+.connection-actions button{
+  min-height:28px;
+  border:1px solid #6a4c4a;
+  border-radius:6px;
+  background:#49302f;
+  color:#ffd8d4;
+  padding:0 10px;
+  font-size:9px;
+  font-weight:700;
+  cursor:pointer;
+}
+.connection-actions button:hover{background:#5b3735}
+
+@media (max-width:767px){
+  .connection-hit{stroke-width:34}
+  .port{
+    width:44px;
+    height:44px;
+  }
+  .port:after{
+    width:12px;
+    height:12px;
+  }
+  .port-in{left:-22px}
+  .port-out{right:-22px}
+  .frame:not(.selected) .port{opacity:0;pointer-events:none}
+  .frame.selected .port{opacity:1;pointer-events:auto}
+  .stage.connecting .frame .port-in.can-connect{
+    opacity:1;
+    pointer-events:auto;
+  }
+  .stage.connecting .frame .port-in.cannot-connect{
+    opacity:.12;
+    pointer-events:none;
+  }
+  .connection-actions{
+    bottom:calc(68px + env(safe-area-inset-bottom));
+    max-width:calc(100vw - 20px);
+  }
 }

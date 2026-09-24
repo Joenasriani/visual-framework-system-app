@@ -76,10 +76,12 @@ function evaluateExpression(body: string, input: unknown): unknown {
 }
 
 async function callModel(frame: Frame, input: unknown): Promise<string> {
+  const instruction = frame.body?.trim() || `Respond using ${frame.title} as the active perspective.`;
+  const stimulus = input ?? (frame.kind === 'asset' ? frame.value ?? null : null);
   const response = await fetch('/api/model', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: frame.title, instruction: frame.body || '', input })
+    body: JSON.stringify({ title: frame.title, instruction, input: stimulus })
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data?.error || 'MODEL FAILED');
@@ -88,8 +90,8 @@ async function callModel(frame: Frame, input: unknown): Promise<string> {
 }
 
 async function executeFrameOperation(frame: Frame, input: unknown): Promise<unknown> {
-  if (frame.kind === 'asset') return frame.value ?? frame.body;
   if (frame.operation === 'MODEL') return callModel(frame, input);
+  if (frame.kind === 'asset') return frame.value ?? frame.body;
   if (frame.kind === 'expression') {
     return frame.expressionClass === 'DESCRIPTIVE' ? input : evaluateExpression(frame.body, input);
   }
