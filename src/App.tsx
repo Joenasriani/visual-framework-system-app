@@ -343,6 +343,8 @@ export default function App() {
   const selectedFrameId = selectedFrameIds.at(-1) ?? '';
 
   const openPanel = useCallback((mode: SideMode) => {
+    setRelationshipPickMode(false);
+    setStatus(current => current === 'SELECT 2' ? 'READY' : current);
     setSideMode(mode);
     setPanelOpen(true);
   }, []);
@@ -581,7 +583,9 @@ export default function App() {
     event.stopPropagation();
     const additive = event.shiftKey || event.metaKey || event.ctrlKey || relationshipPickMode;
     let selection = selectedFrameIds;
-    if (!selection.includes(frame.id)) selection = additive ? [...selection, frame.id] : [frame.id];
+    if (!selection.includes(frame.id)) {
+      selection = relationshipPickMode ? [...selection, frame.id].slice(-2) : additive ? [...selection, frame.id] : [frame.id];
+    }
     setSelectedFrameIds(selection);
     setSelectedConnectionId(null);
     setSideMode('frame');
@@ -797,6 +801,9 @@ export default function App() {
       }]
     }), { label: `Add ${relationshipLabel(selectedMeaning)} Relationship` });
     setRelationshipMeaning(selectedMeaning);
+    setRelationshipPickMode(false);
+    setPanelOpen(false);
+    setStatus('READY');
   }, [changeFramework, relationshipMeaning, selectedFrameIds]);
 
   const containSelection = useCallback(() => {
@@ -1146,6 +1153,7 @@ export default function App() {
               <button className="quiet-action" onClick={() => openPanel('relationships')}>Relationship Library</button>
             </>}
             {selectedFrameIds.length !== 2 && <button className="quiet-action relationship-action" onClick={() => openPanel('relationships')}>Relationships</button>}
+            {selectedFrame && <button className="quiet-action inspect-action" onClick={() => openPanel('frame')}>Inspect</button>}
             <button className="quiet-action fit-action" onClick={fitView}>Fit</button>
             <div className="zoom"><button onClick={() => setScale(value => clamp(+(value - 0.1).toFixed(2), 0.35, 1.6))}>−</button><span>{Math.round(scale * 100)}%</span><button onClick={() => setScale(value => clamp(+(value + 0.1).toFixed(2), 0.35, 1.6))}>+</button></div>
           </div>
@@ -1290,6 +1298,15 @@ export default function App() {
           <IssuesInspector issues={lintIssues} executionIssues={executionIssues} onSelect={ids => { setSelectedFrameIds(ids); setSideMode('frame'); closePanel(); }} onClose={() => { closePanel(); setSideMode('frame'); }} />
         ) : sideMode === 'runs' ? (
           <RunsInspector runs={runs} activeRun={run} onSelect={selected => setRun(selected)} onClose={() => { closePanel(); setSideMode('frame'); }} />
+        ) : sideMode === 'framework' ? (
+          <FrameworkInspector
+            framework={framework}
+            pendingProposals={proposalCount}
+            transformations={framework.transformations?.length ?? 0}
+            onOpenProposal={() => openPanel('proposal')}
+            onOpenIssues={() => openPanel('issues')}
+            onOpenRuns={() => openPanel('runs')}
+          />
         ) : selectedFrame ? (
           <FrameInspector
             frame={selectedFrame}
@@ -1318,7 +1335,7 @@ export default function App() {
 
       <nav className="mobile-action-bar" aria-label="Canvas actions">
         <button onClick={undo} disabled={!pastRef.current.length}><span>↶</span><b>Undo</b></button>
-        <button onClick={() => openPanel('library')}><span>＋</span><b>Add</b></button>
+        <button onClick={() => openPanel('library')}><span>＋</span><b>New</b></button>
         <button
           className={relationshipPickMode ? 'active' : ''}
           onClick={() => {
