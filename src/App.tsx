@@ -548,8 +548,10 @@ export default function App() {
       title: preset.label,
       role: preset.role,
       epistemicState: preset.epistemicState ?? 'unknown',
+      inputs: preset.kind === 'asset' ? [{ id: 'in', name: 'stimulus', type: 'any' }] : base.inputs,
+      outputs: preset.kind === 'asset' ? [{ id: 'out', name: 'response', type: 'any' }] : base.outputs,
       value: preset.kind === 'asset' ? preset.technical : base.value,
-      body: preset.kind === 'instruction' ? 'Describe the process or transformation.' : base.body
+      body: preset.kind === 'instruction' ? 'Describe the response or change.' : base.body
     };
     changeFramework(current => ({ ...current, version: (current.version ?? 1) + 1, updatedAt: new Date().toISOString(), frames: [...current.frames, frame] }), { label: `Add ${preset.label}` });
     setSelectedConnectionId(null);
