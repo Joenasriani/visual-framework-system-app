@@ -427,6 +427,17 @@ export default function App() {
 
   const closePanel = useCallback(() => setPanelOpen(false), []);
 
+  const startSelectedFlow = useCallback(() => {
+    if (!selectedFrame?.outputs.length) return;
+    const port = selectedFrame.outputs[0];
+    const point = portCenter(selectedFrame, 'out', 0);
+    const next: WireState = { fromFrame: selectedFrame.id, fromPort: port.id, outputType: port.type, x1: point.x, y1: point.y, x2: point.x, y2: point.y };
+    setTapConnect(current => current?.fromFrame === next.fromFrame && current.fromPort === next.fromPort ? null : next);
+    setSelectedConnectionId(null);
+    setPanelOpen(false);
+    setStatus(current => current === 'CHOOSE INPUT' ? 'READY' : 'CHOOSE INPUT');
+  }, [selectedFrame]);
+
   const refreshLists = useCallback(async (frameworkId: string) => {
     const [docs, storedRuns] = await Promise.all([listFrameworks(), listRuns(frameworkId)]);
     setFrameworkList(docs);
@@ -1455,6 +1466,7 @@ export default function App() {
       <nav className="mobile-action-bar" aria-label="Canvas actions">
         <button onClick={undo} disabled={!pastRef.current.length}><span>↶</span><b>Undo</b></button>
         <button onClick={() => openPanel('library')}><span>＋</span><b>New</b></button>
+        <button className={tapConnect ? 'active' : ''} onClick={startSelectedFlow} disabled={!selectedFrame?.outputs.length}><span>→</span><b>Connect</b></button>
         <button
           className={relationshipPickMode ? 'active' : ''}
           onClick={() => {
