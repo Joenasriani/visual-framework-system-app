@@ -77,6 +77,73 @@ const STATE_LABELS: Partial<Record<EpistemicState, string>> = {
   disputed: 'Mixed / Disputed'
 };
 
+interface ElementPreset {
+  id: string;
+  label: string;
+  technical: string;
+  category: 'Mind & Experience' | 'Behavior & Context' | 'People & Society' | 'Research & Reasoning' | 'Framework Tools';
+  kind: FrameKind;
+  role: FrameRole;
+  epistemicState?: EpistemicState;
+  glyph: string;
+}
+
+const ELEMENT_PRESETS: ElementPreset[] = [
+  { id: 'thought', label: 'Thought', technical: 'Cognition / cognitive appraisal', category: 'Mind & Experience', kind: 'asset', role: 'concept', glyph: '◇' },
+  { id: 'feeling', label: 'Feeling', technical: 'Affect / emotional state', category: 'Mind & Experience', kind: 'asset', role: 'variable', glyph: '≈' },
+  { id: 'belief', label: 'Belief', technical: 'Belief / schema where applicable', category: 'Mind & Experience', kind: 'asset', role: 'concept', glyph: 'B' },
+  { id: 'expectation', label: 'Expectation', technical: 'Expectancy', category: 'Mind & Experience', kind: 'asset', role: 'concept', glyph: 'E' },
+  { id: 'attention', label: 'Attention', technical: 'Attentional process', category: 'Mind & Experience', kind: 'asset', role: 'variable', glyph: '◎' },
+  { id: 'perception', label: 'Perception', technical: 'Perceptual representation / process', category: 'Mind & Experience', kind: 'asset', role: 'concept', glyph: 'P' },
+  { id: 'motivation', label: 'Motivation', technical: 'Motivational state / variable', category: 'Mind & Experience', kind: 'asset', role: 'variable', glyph: 'M' },
+  { id: 'goal', label: 'Goal', technical: 'Goal representation / objective', category: 'Mind & Experience', kind: 'asset', role: 'criterion', glyph: 'G' },
+  { id: 'intention', label: 'Intention', technical: 'Behavioral intention', category: 'Mind & Experience', kind: 'asset', role: 'concept', glyph: 'I' },
+  { id: 'sensation', label: 'Sensation', technical: 'Sensory / interoceptive experience', category: 'Mind & Experience', kind: 'asset', role: 'observation', glyph: 'S' },
+
+  { id: 'trigger', label: 'Trigger', technical: 'Antecedent / cue / setting event, depending on function', category: 'Behavior & Context', kind: 'asset', role: 'cause', glyph: '!' },
+  { id: 'behavior', label: 'Behavior', technical: 'Behavioral response / target behavior', category: 'Behavior & Context', kind: 'asset', role: 'observation', glyph: '→' },
+  { id: 'habit', label: 'Habit', technical: 'Habitual response / learned behavioral pattern', category: 'Behavior & Context', kind: 'asset', role: 'concept', glyph: '↻' },
+  { id: 'context', label: 'Context', technical: 'Situational / environmental / social context', category: 'Behavior & Context', kind: 'asset', role: 'constraint', glyph: '⊙' },
+  { id: 'consequence', label: 'Consequence', technical: 'Consequence following a response', category: 'Behavior & Context', kind: 'asset', role: 'effect', glyph: 'C' },
+  { id: 'outcome', label: 'Outcome', technical: 'Behavioral / psychological / social outcome', category: 'Behavior & Context', kind: 'asset', role: 'effect', glyph: 'O' },
+
+  { id: 'person', label: 'Person', technical: 'Actor / individual', category: 'People & Society', kind: 'asset', role: 'concept', glyph: '●' },
+  { id: 'group', label: 'Group', technical: 'Social group / collective', category: 'People & Society', kind: 'asset', role: 'concept', glyph: '◉' },
+  { id: 'social-role', label: 'Role', technical: 'Social role', category: 'People & Society', kind: 'asset', role: 'concept', glyph: 'R' },
+  { id: 'norm', label: 'Norm', technical: 'Social norm / normative expectation', category: 'People & Society', kind: 'asset', role: 'constraint', glyph: 'N' },
+  { id: 'status', label: 'Status', technical: 'Social status / status position', category: 'People & Society', kind: 'asset', role: 'variable', glyph: 'S' },
+  { id: 'identity', label: 'Identity', technical: 'Social identity / self-identity construct', category: 'People & Society', kind: 'asset', role: 'concept', glyph: 'ID' },
+  { id: 'institution', label: 'Institution', technical: 'Institution / organizational actor', category: 'People & Society', kind: 'asset', role: 'concept', glyph: '▣' },
+  { id: 'community', label: 'Community', technical: 'Social community', category: 'People & Society', kind: 'asset', role: 'concept', glyph: '◌' },
+  { id: 'culture', label: 'Culture', technical: 'Cultural context / cultural construct', category: 'People & Society', kind: 'asset', role: 'concept', glyph: 'Cu' },
+  { id: 'resource', label: 'Resource', technical: 'Social / material resource', category: 'People & Society', kind: 'asset', role: 'variable', glyph: '◆' },
+  { id: 'power', label: 'Power', technical: 'Power relation / power construct', category: 'People & Society', kind: 'asset', role: 'variable', glyph: 'P' },
+
+  { id: 'question', label: 'Question', technical: 'Research question / issue', category: 'Research & Reasoning', kind: 'asset', role: 'question', glyph: '?' },
+  { id: 'observation', label: 'Observation', technical: 'Observation / recorded event', category: 'Research & Reasoning', kind: 'asset', role: 'observation', glyph: '○' },
+  { id: 'claim', label: 'Claim', technical: 'Proposition / claim', category: 'Research & Reasoning', kind: 'asset', role: 'claim', glyph: 'C' },
+  { id: 'evidence', label: 'Evidence', technical: 'Empirical evidence / observation / measurement', category: 'Research & Reasoning', kind: 'asset', role: 'evidence', glyph: '✓' },
+  { id: 'hypothesis', label: 'Hypothesis', technical: 'Hypothesis', category: 'Research & Reasoning', kind: 'asset', role: 'hypothesis', epistemicState: 'hypothesized', glyph: 'H' },
+  { id: 'assumption', label: 'Assumption', technical: 'Assumption / premise', category: 'Research & Reasoning', kind: 'asset', role: 'assumption', epistemicState: 'assumed', glyph: 'A' },
+  { id: 'mechanism', label: 'Mechanism', technical: 'Proposed mechanism', category: 'Research & Reasoning', kind: 'asset', role: 'cause', epistemicState: 'hypothesized', glyph: 'M' },
+  { id: 'prediction', label: 'Prediction', technical: 'Testable prediction', category: 'Research & Reasoning', kind: 'asset', role: 'hypothesis', epistemicState: 'hypothesized', glyph: 'Pr' },
+  { id: 'alternative-explanation', label: 'Alternative Explanation', technical: 'Competing hypothesis / explanatory account', category: 'Research & Reasoning', kind: 'asset', role: 'alternative', epistemicState: 'hypothesized', glyph: 'Alt' },
+  { id: 'counterargument', label: 'Counterargument', technical: 'Counterargument / challenge', category: 'Research & Reasoning', kind: 'asset', role: 'contradiction', glyph: '↯' },
+  { id: 'limit', label: 'Limit', technical: 'Boundary condition / applicability limit', category: 'Research & Reasoning', kind: 'asset', role: 'constraint', glyph: 'L' },
+  { id: 'unknown', label: 'Unknown', technical: 'Unresolved information', category: 'Research & Reasoning', kind: 'asset', role: 'unknown', epistemicState: 'unresolved', glyph: '?' },
+  { id: 'gap', label: 'Gap', technical: 'Evidential / reasoning gap', category: 'Research & Reasoning', kind: 'asset', role: 'unknown', epistemicState: 'unresolved', glyph: '□' },
+  { id: 'conclusion', label: 'Conclusion', technical: 'Conclusion / finding', category: 'Research & Reasoning', kind: 'asset', role: 'result', epistemicState: 'inferred', glyph: '∴' },
+
+  { id: 'process', label: 'Process', technical: 'Executable process / transformation', category: 'Framework Tools', kind: 'instruction', role: 'instruction', epistemicState: 'known', glyph: '→' },
+  { id: 'rule', label: 'Rule', technical: 'Deterministic or descriptive rule', category: 'Framework Tools', kind: 'expression', role: 'evaluation', epistemicState: 'known', glyph: 'ƒ' },
+  { id: 'test', label: 'Test', technical: 'Evaluation / check', category: 'Framework Tools', kind: 'check', role: 'evaluation', epistemicState: 'known', glyph: '✓' },
+  { id: 'run-result', label: 'Run Result', technical: 'Result produced by a framework run', category: 'Framework Tools', kind: 'output', role: 'result', epistemicState: 'inferred', glyph: '□' }
+];
+
+const FEATURED_ELEMENT_IDS = ['thought', 'feeling', 'behavior', 'context', 'evidence'];
+const FEATURED_ELEMENT_PRESETS = FEATURED_ELEMENT_IDS.map(id => ELEMENT_PRESETS.find(preset => preset.id === id)!).filter(Boolean);
+const ELEMENT_CATEGORIES: ElementPreset['category'][] = ['Mind & Experience', 'Behavior & Context', 'People & Society', 'Research & Reasoning', 'Framework Tools'];
+
 const RELATIONSHIP_LABELS: Partial<Record<RelationshipMeaning, string>> = {
   'depends-on': 'Depends On',
   'causes': 'Causes',
@@ -204,7 +271,7 @@ interface ClipboardState {
   frames: Frame[];
   connections: FrameworkDocument['connections'];
 }
-type SideMode = 'frame' | 'issues' | 'runs' | 'proposal' | 'framework';
+type SideMode = 'frame' | 'issues' | 'runs' | 'proposal' | 'framework' | 'library';
 type ScopeMode = FrameworkScope['kind'];
 
 function descendants(framework: FrameworkDocument, rootId: string) {
@@ -360,12 +427,22 @@ export default function App() {
     setRun(null);
   }, [changeFramework]);
 
-  const addFrame = useCallback((kind: FrameKind) => {
+  const addElementPreset = useCallback((presetId: string) => {
+    const preset = ELEMENT_PRESETS.find(item => item.id === presetId);
+    if (!preset) return;
     const stage = stageRef.current;
     const x = Math.max(32, ((stage?.scrollLeft ?? 0) + (stage?.clientWidth ?? 900) / 2) / scale - FRAME_WIDTH / 2 + Math.random() * 22);
     const y = Math.max(48, ((stage?.scrollTop ?? 0) + (stage?.clientHeight ?? 600) / 2) / scale - FRAME_HEIGHT / 2 + Math.random() * 22);
-    const frame = makeFrame(kind, x, y);
-    changeFramework(current => ({ ...current, version: (current.version ?? 1) + 1, updatedAt: new Date().toISOString(), frames: [...current.frames, frame] }), { label: 'Add Frame' });
+    const base = makeFrame(preset.kind, x, y);
+    const frame: Frame = {
+      ...base,
+      title: preset.label,
+      role: preset.role,
+      epistemicState: preset.epistemicState ?? 'unknown',
+      value: preset.kind === 'asset' ? preset.technical : base.value,
+      body: preset.kind === 'instruction' ? 'Describe the process or transformation.' : base.body
+    };
+    changeFramework(current => ({ ...current, version: (current.version ?? 1) + 1, updatedAt: new Date().toISOString(), frames: [...current.frames, frame] }), { label: `Add ${preset.label}` });
     setSelectedConnectionId(null);
     setSelectedFrameIds([frame.id]);
     setSideMode('frame');
@@ -916,8 +993,8 @@ export default function App() {
       if (command && key === 'v') { event.preventDefault(); pasteSelection(); return; }
       if (command && key === 'd') { event.preventDefault(); duplicateSelection(); return; }
       if (command && key === 'r') { event.preventDefault(); void executeAll(); return; }
-      const kinds: Record<string, FrameKind> = { '1': 'asset', '2': 'instruction', '3': 'expression', '4': 'check', '5': 'output' };
-      if (kinds[event.key]) addFrame(kinds[event.key]);
+      const presetIds: Record<string, string> = { '1': 'thought', '2': 'feeling', '3': 'behavior', '4': 'context', '5': 'evidence' };
+      if (presetIds[event.key]) addElementPreset(presetIds[event.key]);
       if (event.key === 'Delete' || event.key === 'Backspace') {
         if (selectedConnectionId) removeConnection(selectedConnectionId);
         else deleteSelection();
@@ -932,7 +1009,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [addFrame, copySelection, deleteSelection, duplicateSelection, executeAll, pasteSelection, redo, removeConnection, selectedConnectionId, undo]);
+  }, [addElementPreset, copySelection, deleteSelection, duplicateSelection, executeAll, pasteSelection, redo, removeConnection, selectedConnectionId, undo]);
 
   const onStagePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
@@ -1002,17 +1079,14 @@ export default function App() {
 
       <aside className="tool-rail" aria-label="Add to framework">
         <div className="tool-caption">ADD</div>
-        {([
-          ['asset', '◆', 'Element', '1'],
-          ['instruction', '→', 'Process', '2'],
-          ['expression', 'ƒ', 'Rule', '3'],
-          ['check', '✓', 'Test', '4'],
-          ['output', '□', 'Outcome', '5']
-        ] as const).map(([kind, glyph, toolLabel, key]) => (
-          <button key={kind} className="tool" onClick={() => addFrame(kind)}>
-            <span className="tool-glyph">{glyph}</span><span className="tool-label">{toolLabel}</span><span className="tool-key">{key}</span>
+        {FEATURED_ELEMENT_PRESETS.map((preset, index) => (
+          <button key={preset.id} className="tool" title={preset.technical} onClick={() => addElementPreset(preset.id)}>
+            <span className="tool-glyph">{preset.glyph}</span><span className="tool-label">{preset.label}</span><span className="tool-key">{index + 1}</span>
           </button>
         ))}
+        <button className="tool compact" onClick={() => setSideMode('library')} title="Open the Human Sciences Element Library">
+          <span className="tool-glyph">＋</span><span className="tool-label">Library</span>
+        </button>
         <div className="rail-divider" />
         <button className="tool compact" onClick={duplicateSelection} disabled={!selectedFrameIds.length}><span className="tool-glyph">⧉</span><span className="tool-label">Duplicate</span></button>
         <button className="tool compact" onClick={fitView}><span className="tool-glyph">⌗</span><span className="tool-label">Fit</span></button>
@@ -1164,7 +1238,9 @@ export default function App() {
       </section>
 
       <aside className="inspector">
-        {sideMode === 'proposal' && activeProposal ? (
+        {sideMode === 'library' ? (
+          <ElementLibraryInspector onAdd={addElementPreset} onClose={() => setSideMode(selectedFrame ? 'frame' : 'framework')} />
+        ) : sideMode === 'proposal' && activeProposal ? (
           <ProposalInspector proposal={activeProposal} onAccept={() => void acceptActiveProposal()} onReject={rejectActiveProposal} onClose={() => setSideMode('frame')} />
         ) : sideMode === 'issues' ? (
           <IssuesInspector issues={lintIssues} executionIssues={executionIssues} onSelect={ids => { setSelectedFrameIds(ids); setSideMode('frame'); }} onClose={() => setSideMode('frame')} />
@@ -1199,6 +1275,25 @@ export default function App() {
       {run && <div className={`run-strip${run.status === 'error' ? ' run-strip-error' : ''}`}><span>{run.status === 'running' ? 'RUNNING' : run.status === 'ok' ? 'DONE' : 'STOPPED'}</span><strong>{run.steps.filter(step => step.status === 'ok').length}/{framework.frames.length}</strong><button onClick={() => setRun(null)}>×</button></div>}
     </main>
   );
+}
+
+function ElementLibraryInspector({ onAdd, onClose }: { onAdd: (presetId: string) => void; onClose: () => void }) {
+  return <>
+    <div className="inspector-head"><div><span>ELEMENT LIBRARY</span><strong>Human Sciences</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
+    <p className="proposal-summary">Choose what the element represents. The plain-language label comes first; the professional term follows it. These are presets over the existing VFA graph, not new engine types.</p>
+    {ELEMENT_CATEGORIES.map(category => (
+      <div className="order-block" key={category}>
+        <span>{category}</span>
+        <div className="order-list">
+          {ELEMENT_PRESETS.filter(preset => preset.category === category).map(preset => (
+            <button key={preset.id} title={preset.technical} onClick={() => onAdd(preset.id)}>
+              {preset.label} · {preset.technical}
+            </button>
+          ))}
+        </div>
+      </div>
+    ))}
+  </>;
 }
 
 function FrameInspector({ frame, step, selectedCount, childCount, onClose, onChange, onDelete, onRun, onContain, onRelease, onToggleCollapse }: {
