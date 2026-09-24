@@ -326,6 +326,8 @@ export default function App() {
   const [removingConnectionId, setRemovingConnectionId] = useState<string | null>(null);
   const [cableMotion, setCableMotion] = useState<{ frameId: string; x: number; y: number } | null>(null);
   const [sideMode, setSideMode] = useState<SideMode>('frame');
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [relationshipPickMode, setRelationshipPickMode] = useState(false);
   const [scopeMode, setScopeMode] = useState<ScopeMode>('frame');
   const [relationshipMeaning, setRelationshipMeaning] = useState<RelationshipMeaning>('supports');
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -339,6 +341,15 @@ export default function App() {
   const reducedMotion = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, []);
 
   const selectedFrameId = selectedFrameIds.at(-1) ?? '';
+
+  const openPanel = useCallback((mode: SideMode) => {
+    setRelationshipPickMode(false);
+    setStatus(current => current === 'SELECT 2' ? 'READY' : current);
+    setSideMode(mode);
+    setPanelOpen(true);
+  }, []);
+
+  const closePanel = useCallback(() => setPanelOpen(false), []);
 
   const refreshLists = useCallback(async (frameworkId: string) => {
     const [docs, storedRuns] = await Promise.all([listFrameworks(), listRuns(frameworkId)]);
@@ -467,6 +478,7 @@ export default function App() {
     setSelectedConnectionId(null);
     setSelectedFrameIds([frame.id]);
     setSideMode('frame');
+    setPanelOpen(false);
     setRun(null);
   }, [changeFramework, scale]);
 
@@ -569,9 +581,11 @@ export default function App() {
   const onFramePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>, frame: Frame) => {
     if ((event.target as HTMLElement).closest('button,input,textarea,select,[data-port]')) return;
     event.stopPropagation();
-    const additive = event.shiftKey || event.metaKey || event.ctrlKey;
+    const additive = event.shiftKey || event.metaKey || event.ctrlKey || relationshipPickMode;
     let selection = selectedFrameIds;
-    if (!selection.includes(frame.id)) selection = additive ? [...selection, frame.id] : [frame.id];
+    if (!selection.includes(frame.id)) {
+      selection = relationshipPickMode ? [...selection, frame.id].slice(-2) : additive ? [...selection, frame.id] : [frame.id];
+    }
     setSelectedFrameIds(selection);
     setSelectedConnectionId(null);
     setSideMode('frame');
@@ -600,7 +614,7 @@ export default function App() {
       moved: false
     };
     event.currentTarget.setPointerCapture(event.pointerId);
-  }, [scale, selectedFrameIds]);
+  }, [relationshipPickMode, scale, selectedFrameIds]);
 
   const autoPan = useCallback((clientX: number, clientY: number) => {
     const stage = stageRef.current;
@@ -787,6 +801,9 @@ export default function App() {
       }]
     }), { label: `Add ${relationshipLabel(selectedMeaning)} Relationship` });
     setRelationshipMeaning(selectedMeaning);
+    setRelationshipPickMode(false);
+    setPanelOpen(false);
+    setStatus('READY');
   }, [changeFramework, relationshipMeaning, selectedFrameIds]);
 
   const containSelection = useCallback(() => {
@@ -1027,6 +1044,8 @@ export default function App() {
         setSelectedConnectionId(null);
         wireRef.current = null;
         setWire(null);
+        setRelationshipPickMode(false);
+        setPanelOpen(false);
         setStatus('READY');
       }
     };
@@ -1091,11 +1110,11 @@ export default function App() {
         <div className="brand"><span className="brand-mark">VF</span><span className="brand-name">Visual Framework</span></div>
         <div className="top-actions">
           <span className={`status status-${status.toLowerCase()}`}><i /><b>{status}</b></span>
-          <button className="text-btn" onClick={undo} disabled={!pastRef.current.length}>Undo</button>
-          <button className="text-btn" onClick={redo} disabled={!futureRef.current.length}>Redo</button>
-          <button className="text-btn" onClick={() => setSideMode('issues')}>Checks {lintIssues.length + executionIssues.length}</button>
-          <button className="text-btn" onClick={() => setSideMode('runs')}>Runs {runs.length}</button>
-          <button className="text-btn" onClick={reset}>Reset</button>
+          <button className="text-btn secondary-top-action" onClick={undo} disabled={!pastRef.current.length}>Undo</button>
+          <button className="text-btn secondary-top-action" onClick={redo} disabled={!futureRef.current.length}>Redo</button>
+          <button className="text-btn secondary-top-action" onClick={() => openPanel('issues')}>Checks {lintIssues.length + executionIssues.length}</button>
+          <button className="text-btn secondary-top-action" onClick={() => openPanel('runs')}>Runs {runs.length}</button>
+          <button className="text-btn secondary-top-action" onClick={reset}>Reset</button>
           <button className="run-button" onClick={() => void executeAll()} disabled={status === 'RUNNING' || status === 'THINKING'}><span>Run</span><kbd>⌘R</kbd></button>
         </div>
       </header>
@@ -1107,7 +1126,7 @@ export default function App() {
             <span className="tool-glyph">{preset.glyph}</span><span className="tool-label">{preset.label}</span><span className="tool-key">{index + 1}</span>
           </button>
         ))}
-        <button className="tool compact" onClick={() => setSideMode('library')} title="Open the Human Sciences Element Library">
+        <button className="tool compact" onClick={() => openPanel('library')} title="Open the Human Sciences Element Library">
           <span className="tool-glyph">＋</span><span className="tool-label">Library</span>
         </button>
         <div className="rail-divider" />
@@ -1131,10 +1150,11 @@ export default function App() {
                 {RELATIONSHIPS.map(item => <option key={item} value={item}>{relationshipLabel(item)}</option>)}
               </select>
               <button className="quiet-action" onClick={() => connectMeaning()}>Connect</button>
-              <button className="quiet-action" onClick={() => setSideMode('relationships')}>Relationship Library</button>
+              <button className="quiet-action" onClick={() => openPanel('relationships')}>Relationship Library</button>
             </>}
-            {selectedFrameIds.length !== 2 && <button className="quiet-action" onClick={() => setSideMode('relationships')}>Relationships</button>}
-            <button className="quiet-action" onClick={fitView}>Fit</button>
+            {selectedFrameIds.length !== 2 && <button className="quiet-action relationship-action" onClick={() => openPanel('relationships')}>Relationships</button>}
+            {selectedFrame && <button className="quiet-action inspect-action" onClick={() => openPanel('frame')}>Inspect</button>}
+            <button className="quiet-action fit-action" onClick={fitView}>Fit</button>
             <div className="zoom"><button onClick={() => setScale(value => clamp(+(value - 0.1).toFixed(2), 0.35, 1.6))}>−</button><span>{Math.round(scale * 100)}%</span><button onClick={() => setScale(value => clamp(+(value + 0.1).toFixed(2), 0.35, 1.6))}>+</button></div>
           </div>
         </div>
@@ -1221,7 +1241,7 @@ export default function App() {
                     onPointerDown={event => onFramePointerDown(event, frame)}
                     onPointerMove={onFramePointerMove}
                     onPointerUp={onFramePointerUp}
-                    onDoubleClick={() => { setSelectedFrameIds([frame.id]); setSideMode('frame'); }}
+                    onDoubleClick={() => { setSelectedFrameIds([frame.id]); openPanel('frame'); }}
                   >
                     <div className="frame-index">{frame.role ? roleLabel(frame.role) : KIND_LABELS[frame.kind]}</div>
                     <div className="frame-title">{frame.title}</div>
@@ -1262,28 +1282,38 @@ export default function App() {
         </div>
       </section>
 
-      <aside className="inspector">
+      {panelOpen && <button className="panel-backdrop" aria-label="Close panel" onClick={closePanel} />}
+      <aside className={`inspector${panelOpen ? ' panel-open' : ''}`}>
         {sideMode === 'library' ? (
-          <ElementLibraryInspector onAdd={addElementPreset} onClose={() => setSideMode(selectedFrame ? 'frame' : 'framework')} />
+          <ElementLibraryInspector onAdd={addElementPreset} onClose={() => { closePanel(); setSideMode(selectedFrame ? 'frame' : 'framework'); }} />
         ) : sideMode === 'relationships' ? (
           <RelationshipLibraryInspector
             selectedCount={selectedFrameIds.length}
             onConnect={meaning => connectMeaning(meaning)}
-            onClose={() => setSideMode(selectedFrame ? 'frame' : 'framework')}
+            onClose={() => { closePanel(); setSideMode(selectedFrame ? 'frame' : 'framework'); }}
           />
         ) : sideMode === 'proposal' && activeProposal ? (
-          <ProposalInspector proposal={activeProposal} onAccept={() => void acceptActiveProposal()} onReject={rejectActiveProposal} onClose={() => setSideMode('frame')} />
+          <ProposalInspector proposal={activeProposal} onAccept={() => void acceptActiveProposal()} onReject={rejectActiveProposal} onClose={() => { closePanel(); setSideMode('frame'); }} />
         ) : sideMode === 'issues' ? (
-          <IssuesInspector issues={lintIssues} executionIssues={executionIssues} onSelect={ids => { setSelectedFrameIds(ids); setSideMode('frame'); }} onClose={() => setSideMode('frame')} />
+          <IssuesInspector issues={lintIssues} executionIssues={executionIssues} onSelect={ids => { setSelectedFrameIds(ids); setSideMode('frame'); closePanel(); }} onClose={() => { closePanel(); setSideMode('frame'); }} />
         ) : sideMode === 'runs' ? (
-          <RunsInspector runs={runs} activeRun={run} onSelect={selected => setRun(selected)} onClose={() => setSideMode('frame')} />
+          <RunsInspector runs={runs} activeRun={run} onSelect={selected => setRun(selected)} onClose={() => { closePanel(); setSideMode('frame'); }} />
+        ) : sideMode === 'framework' ? (
+          <FrameworkInspector
+            framework={framework}
+            pendingProposals={proposalCount}
+            transformations={framework.transformations?.length ?? 0}
+            onOpenProposal={() => openPanel('proposal')}
+            onOpenIssues={() => openPanel('issues')}
+            onOpenRuns={() => openPanel('runs')}
+          />
         ) : selectedFrame ? (
           <FrameInspector
             frame={selectedFrame}
             step={stepMap.get(selectedFrame.id)}
             selectedCount={selectedFrameIds.length}
             childCount={(childrenByParent.get(selectedFrame.id) ?? []).length}
-            onClose={() => setSelectedFrameIds([])}
+            onClose={() => { closePanel(); setSelectedFrameIds([]); }}
             onChange={patch => updateFrame(selectedFrame.id, patch)}
             onDelete={deleteSelection}
             onRun={() => void executeSelected()}
@@ -1296,12 +1326,33 @@ export default function App() {
             framework={framework}
             pendingProposals={proposalCount}
             transformations={framework.transformations?.length ?? 0}
-            onOpenProposal={() => setSideMode('proposal')}
-            onOpenIssues={() => setSideMode('issues')}
-            onOpenRuns={() => setSideMode('runs')}
+            onOpenProposal={() => openPanel('proposal')}
+            onOpenIssues={() => openPanel('issues')}
+            onOpenRuns={() => openPanel('runs')}
           />
         )}
       </aside>
+
+      <nav className="mobile-action-bar" aria-label="Canvas actions">
+        <button onClick={undo} disabled={!pastRef.current.length}><span>↶</span><b>Undo</b></button>
+        <button onClick={() => openPanel('library')}><span>＋</span><b>New</b></button>
+        <button
+          className={relationshipPickMode ? 'active' : ''}
+          onClick={() => {
+            if (selectedFrameIds.length === 2) {
+              setRelationshipPickMode(false);
+              openPanel('relationships');
+            } else {
+              setRelationshipPickMode(true);
+              setPanelOpen(false);
+              if (selectedFrameIds.length > 2) setSelectedFrameIds([]);
+              setStatus('SELECT 2');
+            }
+          }}
+        ><span>↔</span><b>Relate</b></button>
+        <button onClick={() => selectedFrame && openPanel('frame')} disabled={!selectedFrame}><span>◎</span><b>Inspect</b></button>
+        <button onClick={() => openPanel('framework')}><span>•••</span><b>More</b></button>
+      </nav>
 
       {run && <div className={`run-strip${run.status === 'error' ? ' run-strip-error' : ''}`}><span>{run.status === 'running' ? 'RUNNING' : run.status === 'ok' ? 'DONE' : 'STOPPED'}</span><strong>{run.steps.filter(step => step.status === 'ok').length}/{framework.frames.length}</strong><button onClick={() => setRun(null)}>×</button></div>}
     </main>
