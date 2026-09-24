@@ -328,15 +328,15 @@ function makeFrame(kind: FrameKind, x: number, y: number): Frame {
     return { id, kind, role: 'concept', epistemicState: 'unknown', provenance, title: 'Concept', operation: 'DETERMINISTIC', x, y, inputs: [], outputs: [{ id: 'out', name: 'value', type: 'any' }], body: '', value: 'New concept' };
   }
   if (kind === 'instruction') {
-    return { id, kind, role: 'instruction', epistemicState: 'known', provenance, title: 'Process', operation: 'MODEL', x, y, inputs: [{ id: 'in', name: 'input', type: 'any' }], outputs: [{ id: 'out', name: 'result', type: 'any' }], body: 'Transform the input.' };
+    return { id, kind, role: 'instruction', epistemicState: 'known', provenance, title: 'Process', operation: 'MODEL', x, y, inputs: [{ id: 'in', name: 'stimulus', type: 'any' }], outputs: [{ id: 'out', name: 'response', type: 'any' }], body: 'Respond to the current stimulus.' };
   }
   if (kind === 'expression') {
-    return { id, kind, role: 'evaluation', epistemicState: 'known', provenance, title: 'Rule', operation: 'DETERMINISTIC', expressionClass: 'EXECUTABLE', x, y, inputs: [{ id: 'in', name: 'input', type: 'text' }], outputs: [{ id: 'out', name: 'value', type: 'boolean' }], body: 'notEmpty(input)' };
+    return { id, kind, role: 'evaluation', epistemicState: 'known', provenance, title: 'Rule', operation: 'DETERMINISTIC', expressionClass: 'EXECUTABLE', x, y, inputs: [{ id: 'in', name: 'stimulus', type: 'text' }], outputs: [{ id: 'out', name: 'response', type: 'boolean' }], body: 'notEmpty(input)' };
   }
   if (kind === 'check') {
-    return { id, kind, role: 'evaluation', epistemicState: 'known', provenance, title: 'Test', operation: 'DETERMINISTIC', x, y, inputs: [{ id: 'in', name: 'input', type: 'any' }], outputs: [{ id: 'out', name: 'valid', type: 'boolean' }], body: 'Pass if truthy' };
+    return { id, kind, role: 'evaluation', epistemicState: 'known', provenance, title: 'Test', operation: 'DETERMINISTIC', x, y, inputs: [{ id: 'in', name: 'stimulus', type: 'any' }], outputs: [{ id: 'out', name: 'response', type: 'boolean' }], body: 'Check whether the current stimulus meets this condition.' };
   }
-  return { id, kind, role: 'result', epistemicState: 'inferred', provenance, title: 'Outcome', operation: 'DETERMINISTIC', x, y, inputs: [{ id: 'in', name: 'input', type: 'any' }], outputs: [], body: '' };
+  return { id, kind, role: 'result', epistemicState: 'inferred', provenance, title: 'Outcome', operation: 'DETERMINISTIC', x, y, inputs: [{ id: 'in', name: 'stimulus', type: 'any' }], outputs: [], body: '' };
 }
 
 interface DragState {
@@ -1561,7 +1561,7 @@ function FrameInspector({ frame, step, selectedCount, childCount, onClose, onCha
     <div className="hierarchy-block"><span>Structure</span><p>{frame.parentId ? 'Inside another element.' : 'Top level element.'}{childCount ? ` Contains ${childCount}.` : ''}</p>{selectedCount > 1 && <button onClick={onContain}>Group selection inside active element</button>}{frame.parentId && <button onClick={onRelease}>Move out of group</button>}{childCount > 0 && <button onClick={onToggleCollapse}>{frame.collapsed ? 'Show contained elements' : 'Hide contained elements'}</button>}</div>
     <div className="io-block"><span>Relationships</span>{[...frame.inputs.map(port => `Receives · ${port.name}`), ...frame.outputs.map(port => `Leads to · ${port.name}`)].map(text => <code key={text}>{text}</code>)}</div>
     <div className="provenance-block"><span>Origin</span><b>{label(frame.provenance?.origin ?? 'user')}</b>{frame.provenance?.source && <small>{frame.provenance.source}</small>}</div>
-    <div className="trace-block"><span>Last run</span>{step ? <><b className={`trace-state trace-${step.status}`}>{step.status === 'ok' ? 'DONE' : 'ERROR'}</b><dl><dt>Received</dt><dd>{short(step.input, 180)}</dd><dt>Instruction</dt><dd>{frame.body || 'Local process'}</dd><dt>Produced</dt><dd>{short(step.output, 180)}</dd><dt>Response</dt><dd>{step.executor === 'MODEL' ? 'External Response System' : 'Direct'}</dd>{step.error && <><dt>Error</dt><dd>{step.error}</dd></>}</dl></> : <em>Not run</em>}</div>
+    <div className="trace-block"><span>Last run</span>{step ? <><b className={`trace-state trace-${step.status}`}>{step.status === 'ok' ? 'DONE' : 'ERROR'}</b><dl><dt>Received</dt><dd>{short(step.input, 180)}</dd><dt>Instruction</dt><dd>{frame.body || 'Direct response'}</dd><dt>Produced</dt><dd>{short(step.output, 180)}</dd><dt>Response</dt><dd>{step.executor === 'MODEL' ? 'External Response System' : 'Direct'}</dd>{step.error && <><dt>Error</dt><dd>{step.error}</dd></>}</dl></> : <em>Not run</em>}</div>
     <button className="inspector-run" onClick={onRun}>Run This Node</button>
     <button className="delete-btn" onClick={onDelete}>Delete</button>
   </>;
