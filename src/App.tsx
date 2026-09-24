@@ -427,17 +427,6 @@ export default function App() {
 
   const closePanel = useCallback(() => setPanelOpen(false), []);
 
-  const startSelectedFlow = useCallback(() => {
-    if (!selectedFrame?.outputs.length) return;
-    const port = selectedFrame.outputs[0];
-    const point = portCenter(selectedFrame, 'out', 0);
-    const next: WireState = { fromFrame: selectedFrame.id, fromPort: port.id, outputType: port.type, x1: point.x, y1: point.y, x2: point.x, y2: point.y };
-    setTapConnect(current => current?.fromFrame === next.fromFrame && current.fromPort === next.fromPort ? null : next);
-    setSelectedConnectionId(null);
-    setPanelOpen(false);
-    setStatus(current => current === 'CHOOSE INPUT' ? 'READY' : 'CHOOSE INPUT');
-  }, [selectedFrame]);
-
   const refreshLists = useCallback(async (frameworkId: string) => {
     const [docs, storedRuns] = await Promise.all([listFrameworks(), listRuns(frameworkId)]);
     setFrameworkList(docs);
@@ -512,6 +501,17 @@ export default function App() {
   const stepMap = useMemo(() => new Map((run?.steps ?? []).map(step => [step.frameId, step])), [run]);
   const selectedFrame = selectedFrameId ? frameMap.get(selectedFrameId) ?? null : null;
   const selectedConnection = selectedConnectionId ? framework.connections.find(connection => connection.id === selectedConnectionId) ?? null : null;
+
+  const startSelectedFlow = useCallback(() => {
+    if (!selectedFrame?.outputs.length) return;
+    const port = selectedFrame.outputs[0];
+    const point = portCenter(selectedFrame, 'out', 0);
+    const next: WireState = { fromFrame: selectedFrame.id, fromPort: port.id, outputType: port.type, x1: point.x, y1: point.y, x2: point.x, y2: point.y };
+    setTapConnect(current => current?.fromFrame === next.fromFrame && current.fromPort === next.fromPort ? null : next);
+    setSelectedConnectionId(null);
+    setPanelOpen(false);
+    setStatus(current => current === 'CHOOSE INPUT' ? 'READY' : 'CHOOSE INPUT');
+  }, [selectedFrame]);
   const lintIssues = useMemo(() => lintFramework(framework), [framework]);
   const executionIssues = useMemo(() => validateFramework(framework), [framework]);
   const activeProposal = useMemo(() => [...(framework.proposals ?? [])].reverse().find(item => item.status === 'pending') ?? null, [framework.proposals]);
