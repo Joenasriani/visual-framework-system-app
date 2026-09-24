@@ -144,27 +144,48 @@ const FEATURED_ELEMENT_IDS = ['thought', 'feeling', 'behavior', 'context', 'evid
 const FEATURED_ELEMENT_PRESETS = FEATURED_ELEMENT_IDS.map(id => ELEMENT_PRESETS.find(preset => preset.id === id)!).filter(Boolean);
 const ELEMENT_CATEGORIES: ElementPreset['category'][] = ['Mind & Experience', 'Behavior & Context', 'People & Society', 'Research & Reasoning', 'Framework Tools'];
 
-const RELATIONSHIP_LABELS: Partial<Record<RelationshipMeaning, string>> = {
-  'depends-on': 'Depends On',
-  'causes': 'Causes',
-  'influences': 'Influences',
-  'constrains': 'Limits',
-  'explains': 'Explains',
-  'derives-from': 'Comes From',
-  'evidence-for': 'Is Evidence For',
-  'assumes': 'Assumes',
-  'questions': 'Questions',
-  'tests': 'Tests',
-  'validates': 'Checks',
-  'refines': 'Refines',
-  'reframes': 'Reframes',
-  'alternative-to': 'Alternative To',
-  'contains': 'Contains',
-  'part-of': 'Part Of',
-  'supports': 'Supports',
-  'challenges': 'Challenges',
-  'contradicts': 'Conflicts With'
-};
+interface RelationshipPreset {
+  meaning: RelationshipMeaning;
+  label: string;
+  technical: string;
+  category: 'Influence & Explanation' | 'Evidence & Reasoning' | 'Interpretation & Alternatives' | 'Structure';
+}
+
+const RELATIONSHIP_PRESETS: RelationshipPreset[] = [
+  { meaning: 'influences', label: 'Influences', technical: 'Influence relation', category: 'Influence & Explanation' },
+  { meaning: 'causes', label: 'May Cause', technical: 'Hypothesized causal relation', category: 'Influence & Explanation' },
+  { meaning: 'constrains', label: 'Limits', technical: 'Constraining condition / limiting relation', category: 'Influence & Explanation' },
+  { meaning: 'explains', label: 'Explains', technical: 'Explanatory relation', category: 'Influence & Explanation' },
+  { meaning: 'depends-on', label: 'Depends On', technical: 'Dependency relation', category: 'Influence & Explanation' },
+
+  { meaning: 'supports', label: 'Supports', technical: 'Evidential / argumentative support', category: 'Evidence & Reasoning' },
+  { meaning: 'evidence-for', label: 'Is Evidence For', technical: 'Evidential relation', category: 'Evidence & Reasoning' },
+  { meaning: 'challenges', label: 'Challenges', technical: 'Challenge relation', category: 'Evidence & Reasoning' },
+  { meaning: 'contradicts', label: 'Conflicts With', technical: 'Contradictory relation', category: 'Evidence & Reasoning' },
+  { meaning: 'tests', label: 'Tests', technical: 'Test relation', category: 'Evidence & Reasoning' },
+  { meaning: 'validates', label: 'Checks', technical: 'Validation / verification relation', category: 'Evidence & Reasoning' },
+  { meaning: 'assumes', label: 'Assumes', technical: 'Assumption dependency', category: 'Evidence & Reasoning' },
+  { meaning: 'questions', label: 'Questions', technical: 'Question / challenge relation', category: 'Evidence & Reasoning' },
+
+  { meaning: 'refines', label: 'Refines', technical: 'Refinement relation', category: 'Interpretation & Alternatives' },
+  { meaning: 'reframes', label: 'Reframes', technical: 'Interpretive reframing relation', category: 'Interpretation & Alternatives' },
+  { meaning: 'alternative-to', label: 'Alternative To', technical: 'Competing explanation / position', category: 'Interpretation & Alternatives' },
+  { meaning: 'derives-from', label: 'Comes From', technical: 'Derivation / provenance relation', category: 'Interpretation & Alternatives' },
+
+  { meaning: 'contains', label: 'Contains', technical: 'Containment relation', category: 'Structure' },
+  { meaning: 'part-of', label: 'Part Of', technical: 'Part-whole relation', category: 'Structure' }
+];
+
+const RELATIONSHIP_CATEGORIES: RelationshipPreset['category'][] = [
+  'Influence & Explanation',
+  'Evidence & Reasoning',
+  'Interpretation & Alternatives',
+  'Structure'
+];
+
+const RELATIONSHIP_LABELS: Partial<Record<RelationshipMeaning, string>> = Object.fromEntries(
+  RELATIONSHIP_PRESETS.map(preset => [preset.meaning, preset.label])
+) as Partial<Record<RelationshipMeaning, string>>;
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const clone = <T,>(value: T): T => structuredClone(value);
@@ -271,7 +292,7 @@ interface ClipboardState {
   frames: Frame[];
   connections: FrameworkDocument['connections'];
 }
-type SideMode = 'frame' | 'issues' | 'runs' | 'proposal' | 'framework' | 'library';
+type SideMode = 'frame' | 'issues' | 'runs' | 'proposal' | 'framework' | 'library' | 'relationships';
 type ScopeMode = FrameworkScope['kind'];
 
 function descendants(framework: FrameworkDocument, rootId: string) {
@@ -744,10 +765,11 @@ export default function App() {
     }
   }, [changeFramework, reducedMotion, removingConnectionId]);
 
-  const connectMeaning = useCallback(() => {
+  const connectMeaning = useCallback((meaning?: RelationshipMeaning) => {
     if (selectedFrameIds.length !== 2) return;
     const [fromFrame, toFrame] = selectedFrameIds;
     if (fromFrame === toFrame) return;
+    const selectedMeaning = meaning ?? relationshipMeaning;
     const createdAt = new Date().toISOString();
     changeFramework(current => ({
       ...current,
@@ -760,10 +782,11 @@ export default function App() {
         toFrame,
         toPort: '',
         kind: 'semantic',
-        meaning: relationshipMeaning,
+        meaning: selectedMeaning,
         provenance: { origin: 'user', createdAt }
       }]
-    }), { label: 'Add Meaning Relationship' });
+    }), { label: `Add ${relationshipLabel(selectedMeaning)} Relationship` });
+    setRelationshipMeaning(selectedMeaning);
   }, [changeFramework, relationshipMeaning, selectedFrameIds]);
 
   const containSelection = useCallback(() => {
@@ -1107,8 +1130,10 @@ export default function App() {
               <select className="relation-select" value={relationshipMeaning} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setRelationshipMeaning(event.target.value as RelationshipMeaning)}>
                 {RELATIONSHIPS.map(item => <option key={item} value={item}>{relationshipLabel(item)}</option>)}
               </select>
-              <button className="quiet-action" onClick={connectMeaning}>Connect</button>
+              <button className="quiet-action" onClick={() => connectMeaning()}>Connect</button>
+              <button className="quiet-action" onClick={() => setSideMode('relationships')}>Relationship Library</button>
             </>}
+            {selectedFrameIds.length !== 2 && <button className="quiet-action" onClick={() => setSideMode('relationships')}>Relationships</button>}
             <button className="quiet-action" onClick={fitView}>Fit</button>
             <div className="zoom"><button onClick={() => setScale(value => clamp(+(value - 0.1).toFixed(2), 0.35, 1.6))}>−</button><span>{Math.round(scale * 100)}%</span><button onClick={() => setScale(value => clamp(+(value + 0.1).toFixed(2), 0.35, 1.6))}>+</button></div>
           </div>
@@ -1240,6 +1265,12 @@ export default function App() {
       <aside className="inspector">
         {sideMode === 'library' ? (
           <ElementLibraryInspector onAdd={addElementPreset} onClose={() => setSideMode(selectedFrame ? 'frame' : 'framework')} />
+        ) : sideMode === 'relationships' ? (
+          <RelationshipLibraryInspector
+            selectedCount={selectedFrameIds.length}
+            onConnect={meaning => connectMeaning(meaning)}
+            onClose={() => setSideMode(selectedFrame ? 'frame' : 'framework')}
+          />
         ) : sideMode === 'proposal' && activeProposal ? (
           <ProposalInspector proposal={activeProposal} onAccept={() => void acceptActiveProposal()} onReject={rejectActiveProposal} onClose={() => setSideMode('frame')} />
         ) : sideMode === 'issues' ? (
@@ -1275,6 +1306,41 @@ export default function App() {
       {run && <div className={`run-strip${run.status === 'error' ? ' run-strip-error' : ''}`}><span>{run.status === 'running' ? 'RUNNING' : run.status === 'ok' ? 'DONE' : 'STOPPED'}</span><strong>{run.steps.filter(step => step.status === 'ok').length}/{framework.frames.length}</strong><button onClick={() => setRun(null)}>×</button></div>}
     </main>
   );
+}
+
+function RelationshipLibraryInspector({ selectedCount, onConnect, onClose }: {
+  selectedCount: number;
+  onConnect: (meaning: RelationshipMeaning) => void;
+  onClose: () => void;
+}) {
+  return <>
+    <div className="inspector-head"><div><span>RELATIONSHIP LIBRARY</span><strong>Human Sciences</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
+    <p className="proposal-summary">
+      Choose what the connection means. Select exactly two elements to create a relationship from the first selected element to the second.
+    </p>
+    {selectedCount !== 2 && <p className="empty-copy">Select exactly two elements to connect them. You can still inspect the relationship vocabulary below.</p>}
+    {RELATIONSHIP_CATEGORIES.map(category => (
+      <div className="order-block" key={category}>
+        <span>{category}</span>
+        <div className="order-list">
+          {RELATIONSHIP_PRESETS.filter(preset => preset.category === category).map(preset => (
+            <button
+              key={preset.meaning}
+              title={preset.technical}
+              disabled={selectedCount !== 2}
+              onClick={() => onConnect(preset.meaning)}
+            >
+              {preset.label} · {preset.technical}
+            </button>
+          ))}
+        </div>
+      </div>
+    ))}
+    <div className="hierarchy-block">
+      <span>Scientific precision</span>
+      <p>Moderation, mediation, reinforcement, temporal precedence, priming, diffusion, contagion, mobilization and similar mechanisms are not collapsed into these relationships. They should be added only when VFA has distinct underlying relationship types for them.</p>
+    </div>
+  </>;
 }
 
 function ElementLibraryInspector({ onAdd, onClose }: { onAdd: (presetId: string) => void; onClose: () => void }) {
