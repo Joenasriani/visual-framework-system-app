@@ -12,6 +12,7 @@ export function createSeedFramework(): FrameworkDocument {
     version: 1,
     proposals: [],
     transformations: [],
+    layers: [],
     updatedAt: createdAt,
     frames: [
       {
