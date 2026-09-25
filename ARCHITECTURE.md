@@ -75,3 +75,7 @@ Introduce Python only when research pipelines, statistical analysis, graph algor
 Do not create an Android fork.
 
 First evaluate the PWA. Later evaluate packaging the same application if platform distribution or native APIs justify it.
+
+## Locked node graph interaction contract
+
+The node editor must follow [NODE_GRAPH_CONTRACT.md](NODE_GRAPH_CONTRACT.md). Layers are graph containers beneath cables and nodes; they must not alter node execution, port semantics, or cable compatibility.
