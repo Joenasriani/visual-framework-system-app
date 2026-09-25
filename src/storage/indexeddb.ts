@@ -48,6 +48,7 @@ function normalizeFramework(input: FrameworkDocument): FrameworkDocument {
     version: input.version ?? 1,
     proposals: input.proposals ?? [],
     transformations: input.transformations ?? [],
+    layers: input.layers ?? [],
     frames: (input.frames ?? []).map(frame => ({
       ...frame,
       role: frame.role ?? defaultRole(frame),
