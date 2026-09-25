@@ -1062,8 +1062,19 @@ export default function App() {
     event.stopPropagation();
     event.preventDefault();
     const point = portCenter(frame, 'out', portIndex);
-    const next: WireState = { fromFrame: frame.id, fromPort: port.id, outputType: port.type, x1: point.x, y1: point.y, x2: point.x, y2: point.y };
+    const next: WireState = {
+      fromFrame: frame.id,
+      fromPort: port.id,
+      outputType: port.type,
+      x1: point.x,
+      y1: point.y,
+      x2: point.x,
+      y2: point.y,
+      sourceDirection: 'out',
+      previewState: 'neutral'
+    };
     setSelectedConnectionId(null);
+    setSelectedLayerId(null);
     if (event.pointerType === 'touch' || event.pointerType === 'pen') {
       setTapConnect(current => current?.fromFrame === frame.id && current.fromPort === port.id ? null : next);
       setWire(null);
@@ -1076,26 +1087,114 @@ export default function App() {
     setStatus('CONNECT');
   }, []);
 
-  const nearestCompatiblePort = useCallback((clientX: number, clientY: number, activeWire: WireState) => {
-    const candidates = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-port="in"]'));
-    let best: { frameId: string; portId: string; distance: number } | null = null;
-    const source = frameMap.get(activeWire.fromFrame);
-    if (!source) return null;
+  const startWireFromInput = useCallback((event: React.PointerEvent<HTMLButtonElement>, frame: Frame, port: Port, portIndex: number) => {
+    event.stopPropagation();
+    event.preventDefault();
+    setTapConnect(null);
+    setSelectedConnectionId(null);
+    setSelectedLayerId(null);
+
+    const existing = frameworkRef.current.connections.find(connection =>
+      connection.kind !== 'semantic' &&
+      connection.toFrame === frame.id &&
+      connection.toPort === port.id
+    );
+
+    if (!existing) {
+      const point = portCenter(frame, 'in', portIndex);
+      const invalid: WireState = {
+        fromFrame: frame.id,
+        fromPort: port.id,
+        outputType: port.type,
+        x1: point.x,
+        y1: point.y,
+        x2: point.x,
+        y2: point.y,
+        sourceDirection: 'in',
+        previewState: 'invalid'
+      };
+      wireRef.current = invalid;
+      setWire(invalid);
+      setStatus('INVALID');
+      return;
+    }
+
+    const source = frameworkRef.current.frames.find(candidate => candidate.id === existing.fromFrame);
+    if (!source) return;
+    const outputIndex = Math.max(0, source.outputs.findIndex(candidate => candidate.id === existing.fromPort));
+    const startPoint = portCenter(source, 'out', outputIndex);
+    const inputPoint = portCenter(frame, 'in', portIndex);
+    const next: WireState = {
+      fromFrame: source.id,
+      fromPort: existing.fromPort,
+      outputType: source.outputs[outputIndex]?.type ?? 'any',
+      x1: startPoint.x,
+      y1: startPoint.y,
+      x2: inputPoint.x,
+      y2: inputPoint.y,
+      detachedConnectionId: existing.id,
+      sourceDirection: 'out',
+      previewState: 'neutral'
+    };
+    wireRef.current = next;
+    setWire(next);
+    pulsePort(frame.id, port.id, 'detach');
+    playGraphClick('detach');
+    setStatus('RECONNECT');
+  }, [pulsePort]);
+
+  const evaluateWireTarget = useCallback((clientX: number, clientY: number, activeWire: WireState) => {
+    const stage = stageRef.current;
+    if (!stage) return null;
+    const stageRect = stage.getBoundingClientRect();
+    const candidates = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-port]'));
+    let best: {
+      frameId: string;
+      portId: string;
+      direction: 'in' | 'out';
+      distance: number;
+      valid: boolean;
+      x: number;
+      y: number;
+    } | null = null;
+
     for (const element of candidates) {
       const frameId = element.dataset.frameId;
       const portId = element.dataset.portId;
-      if (!frameId || !portId || frameId === source.id) continue;
-      const frame = frameMap.get(frameId);
-      const input = frame?.inputs.find(port => port.id === portId);
-      if (!frame || !input || !compatible(activeWire.outputType, input.type)) continue;
+      const direction = element.dataset.port as 'in' | 'out' | undefined;
+      if (!frameId || !portId || !direction) continue;
+      if (activeWire.sourceDirection === 'out' && direction === 'out' && frameId === activeWire.fromFrame && portId === activeWire.fromPort) continue;
       const rect = element.getBoundingClientRect();
       const px = rect.left + rect.width / 2;
       const py = rect.top + rect.height / 2;
       const distance = Math.hypot(clientX - px, clientY - py);
-      if (distance <= 38 && (!best || distance < best.distance)) best = { frameId, portId, distance };
+      if (distance > 20 || (best && distance >= best.distance)) continue;
+
+      let valid = activeWire.sourceDirection !== 'in' && direction === 'in';
+      const targetFrame = frameMap.get(frameId);
+      const input = targetFrame?.inputs.find(candidate => candidate.id === portId);
+      if (!targetFrame || frameId === activeWire.fromFrame) valid = false;
+      if (direction === 'in' && (!input || !compatible(activeWire.outputType, input.type))) valid = false;
+      if (valid && wouldCreateExecutionCycle(
+        frameworkRef.current,
+        activeWire.fromFrame,
+        frameId,
+        activeWire.detachedConnectionId,
+        { frameId, portId }
+      )) valid = false;
+
+      best = {
+        frameId,
+        portId,
+        direction,
+        distance,
+        valid,
+        x: (px - stageRect.left + stage.scrollLeft) / scale,
+        y: (py - stageRect.top + stage.scrollTop) / scale
+      };
     }
     return best;
-  }, [frameMap]);
+  }, [frameMap, scale]);
 
   useEffect(() => {
     const onMove = (event: PointerEvent) => {
@@ -1104,38 +1203,67 @@ export default function App() {
       if (!active || !stage) return;
       autoPan(event.clientX, event.clientY);
       const rect = stage.getBoundingClientRect();
-      const next = {
+      const target = evaluateWireTarget(event.clientX, event.clientY, active);
+      const next: WireState = {
         ...active,
-        x2: (event.clientX - rect.left + stage.scrollLeft) / scale,
-        y2: (event.clientY - rect.top + stage.scrollTop) / scale
+        x2: target?.x ?? (event.clientX - rect.left + stage.scrollLeft) / scale,
+        y2: target?.y ?? (event.clientY - rect.top + stage.scrollTop) / scale,
+        previewState: active.sourceDirection === 'in' ? 'invalid' : target ? (target.valid ? 'valid' : 'invalid') : 'neutral'
       };
       wireRef.current = next;
       setWire(next);
+      setStatus(next.previewState === 'invalid' ? 'INVALID' : active.detachedConnectionId ? 'RECONNECT' : 'CONNECT');
     };
+
     const onUp = (event: PointerEvent) => {
       const active = wireRef.current;
       if (!active) return;
-      const target = nearestCompatiblePort(event.clientX, event.clientY, active);
-      if (target) {
-        const id = `e-${Date.now()}`;
-        const createdAt = new Date().toISOString();
+      const target = evaluateWireTarget(event.clientX, event.clientY, active);
+      const createdAt = new Date().toISOString();
+
+      if (target?.valid) {
+        const id = active.detachedConnectionId ?? `e-${Date.now()}`;
         changeFramework(current => ({
           ...current,
           version: (current.version ?? 1) + 1,
           updatedAt: createdAt,
           connections: [
-            ...current.connections.filter(connection => connection.kind === 'semantic' || !(connection.toFrame === target.frameId && connection.toPort === target.portId)),
-            { id, fromFrame: active.fromFrame, fromPort: active.fromPort, toFrame: target.frameId, toPort: target.portId, kind: 'execution', meaning: 'feeds', provenance: { origin: 'user', createdAt } }
+            ...current.connections.filter(connection =>
+              connection.id !== active.detachedConnectionId &&
+              (connection.kind === 'semantic' || !(connection.toFrame === target.frameId && connection.toPort === target.portId))
+            ),
+            {
+              id,
+              fromFrame: active.fromFrame,
+              fromPort: active.fromPort,
+              toFrame: target.frameId,
+              toPort: target.portId,
+              kind: 'execution',
+              meaning: 'feeds',
+              provenance: { origin: 'user', createdAt }
+            }
           ]
-        }), { label: 'Connect Frames' });
+        }), { label: active.detachedConnectionId ? 'Reconnect Cable' : 'Connect Frames' });
         setNewConnectionId(id);
         window.setTimeout(() => setNewConnectionId(null), 340);
+        pulsePort(target.frameId, target.portId, 'connect');
+        playGraphClick('connect');
+        setRun(null);
+      } else if (active.detachedConnectionId) {
+        changeFramework(current => ({
+          ...current,
+          version: (current.version ?? 1) + 1,
+          updatedAt: createdAt,
+          connections: current.connections.filter(connection => connection.id !== active.detachedConnectionId)
+        }), { label: 'Disconnect Cable' });
         setRun(null);
       }
+
       wireRef.current = null;
       setWire(null);
       setStatus('READY');
     };
+
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
@@ -1144,11 +1272,16 @@ export default function App() {
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
     };
-  }, [autoPan, changeFramework, nearestCompatiblePort, scale]);
+  }, [autoPan, changeFramework, evaluateWireTarget, pulsePort, scale]);
 
   const finishTapConnection = useCallback((frame: Frame, port: Port) => {
     const active = tapConnect;
     if (!active || frame.id === active.fromFrame || !compatible(active.outputType, port.type)) return;
+    if (wouldCreateExecutionCycle(frameworkRef.current, active.fromFrame, frame.id, active.detachedConnectionId, { frameId: frame.id, portId: port.id })) {
+      setStatus('INVALID');
+      window.setTimeout(() => setStatus(current => current === 'INVALID' ? 'READY' : current), 500);
+      return;
+    }
     const id = `e-${Date.now()}`;
     const createdAt = new Date().toISOString();
     changeFramework(current => ({
@@ -1162,10 +1295,12 @@ export default function App() {
     }), { label: 'Connect Response Flow' });
     setNewConnectionId(id);
     window.setTimeout(() => setNewConnectionId(null), 340);
+    pulsePort(frame.id, port.id, 'connect');
+    playGraphClick('connect');
     setTapConnect(null);
     setStatus('READY');
     setRun(null);
-  }, [changeFramework, tapConnect]);
+  }, [changeFramework, pulsePort, tapConnect]);
 
   const removeConnection = useCallback((id: string) => {
     if (removingConnectionId) return;
