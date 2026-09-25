@@ -577,6 +577,8 @@ export default function App() {
   const frameMap = useMemo(() => new Map(framework.frames.map(frame => [frame.id, frame])), [framework.frames]);
   const stepMap = useMemo(() => new Map((run?.steps ?? []).map(step => [step.frameId, step])), [run]);
   const selectedFrame = selectedFrameId ? frameMap.get(selectedFrameId) ?? null : null;
+  const layers = framework.layers ?? [];
+  const selectedLayer = selectedLayerId ? layers.find(layer => layer.id === selectedLayerId) ?? null : null;
   const selectedConnection = selectedConnectionId ? framework.connections.find(connection => connection.id === selectedConnectionId) ?? null : null;
 
   const startSelectedFlow = useCallback(() => {
@@ -611,8 +613,90 @@ export default function App() {
     }
     return map;
   }, [framework.frames]);
-  const worldWidth = Math.max(1500, ...framework.frames.map(frame => frame.x + FRAME_WIDTH + 260));
-  const worldHeight = Math.max(900, ...framework.frames.map(frame => frame.y + FRAME_HEIGHT + 300));
+  const worldWidth = Math.max(
+    1500,
+    ...framework.frames.map(frame => frame.x + FRAME_WIDTH + 260),
+    ...layers.map(layer => layer.x + layer.width + 260)
+  );
+  const worldHeight = Math.max(
+    900,
+    ...framework.frames.map(frame => frame.y + FRAME_HEIGHT + 300),
+    ...layers.map(layer => layer.y + layer.height + 300)
+  );
+
+  const pulsePort = useCallback((frameId: string, portId: string, kind: 'connect' | 'detach') => {
+    setPortFeedback({ frameId, portId, kind });
+    window.setTimeout(() => setPortFeedback(current => current?.frameId === frameId && current.portId === portId ? null : current), 240);
+  }, []);
+
+  const updateLayer = useCallback((layerId: string, patch: Partial<Layer>, record = true) => {
+    changeFramework(current => ({
+      ...current,
+      updatedAt: new Date().toISOString(),
+      version: (current.version ?? 1) + (record ? 1 : 0),
+      layers: (current.layers ?? []).map(layer => layer.id === layerId ? { ...layer, ...patch } : layer)
+    }), { record, label: 'Edit Layer' });
+  }, [changeFramework]);
+
+  const createLayer = useCallback(() => {
+    const stage = stageRef.current;
+    const selected = frameworkRef.current.frames.filter(frame => selectedFrameIds.includes(frame.id));
+    const stamp = Date.now();
+    const id = `layer-${stamp}`;
+    const count = (frameworkRef.current.layers ?? []).length + 1;
+    let x: number;
+    let y: number;
+    let width: number;
+    let height: number;
+
+    if (selected.length) {
+      const minX = Math.min(...selected.map(frame => frame.x));
+      const minY = Math.min(...selected.map(frame => frame.y));
+      const maxX = Math.max(...selected.map(frame => frame.x + FRAME_WIDTH));
+      const maxY = Math.max(...selected.map(frame => frame.y + FRAME_HEIGHT));
+      x = Math.max(16, minX - 44);
+      y = Math.max(16, minY - 54);
+      width = Math.max(280, maxX - minX + 88);
+      height = Math.max(190, maxY - minY + 98);
+    } else {
+      const centerX = ((stage?.scrollLeft ?? 0) + (stage?.clientWidth ?? 900) / 2) / scale;
+      const centerY = ((stage?.scrollTop ?? 0) + (stage?.clientHeight ?? 600) / 2) / scale;
+      width = 420;
+      height = 280;
+      x = Math.max(16, centerX - width / 2);
+      y = Math.max(16, centerY - height / 2);
+    }
+
+    const layer: Layer = { id, name: `Layer ${count}`, x, y, width, height };
+    const ids = new Set(selected.map(frame => frame.id));
+    changeFramework(current => ({
+      ...current,
+      version: (current.version ?? 1) + 1,
+      updatedAt: new Date().toISOString(),
+      layers: [...(current.layers ?? []), layer],
+      frames: current.frames.map(frame => ids.has(frame.id) ? { ...frame, layerId: id } : frame)
+    }), { label: selected.length ? 'Group Frames in Layer' : 'Create Layer' });
+    setSelectedFrameIds([]);
+    setSelectedConnectionId(null);
+    setSelectedLayerId(id);
+    setRun(null);
+  }, [changeFramework, scale, selectedFrameIds]);
+
+  const deleteLayer = useCallback((layerId: string) => {
+    const ids = new Set(frameworkRef.current.frames.filter(frame => frame.layerId === layerId).map(frame => frame.id));
+    changeFramework(current => ({
+      ...current,
+      version: (current.version ?? 1) + 1,
+      updatedAt: new Date().toISOString(),
+      layers: (current.layers ?? []).filter(layer => layer.id !== layerId),
+      frames: current.frames.filter(frame => !ids.has(frame.id)),
+      connections: current.connections.filter(connection => !ids.has(connection.fromFrame) && !ids.has(connection.toFrame))
+    }), { label: 'Delete Layer' });
+    setSelectedLayerId(null);
+    setSelectedFrameIds([]);
+    setSelectedConnectionId(null);
+    setRun(null);
+  }, [changeFramework]);
 
   const updateFrame = useCallback((frameId: string, patch: Partial<Frame>, record = true) => {
     changeFramework(current => ({
