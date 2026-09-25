@@ -73,6 +73,16 @@ export interface Frame {
   orderPreset?: string;
   parentId?: string;
   collapsed?: boolean;
+  layerId?: string;
+}
+
+export interface Layer {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export type ConnectionKind = 'execution' | 'semantic' | 'both';
@@ -152,6 +162,7 @@ export interface FrameworkDocument {
   name: string;
   frames: Frame[];
   connections: Connection[];
+  layers?: Layer[];
   goal?: FrameworkGoal;
   proposals?: Proposal[];
   transformations?: TransformationRecord[];
