@@ -123,6 +123,117 @@ try {
   assert(await executionCount() === reject0, 'Incompatible cable was accepted');
   await page.keyboard.press('Control+z');
 
+  // Exact Resolve-style cable contract: 20px snap, invalid red preview, detach-to-delete.
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
+  await sleep(120);
+  const baseExec = await executionCount();
+
+  await page.getByRole('button', { name: /Step/ }).first().click();
+  const snapStep = page.locator('.frame-instruction').last();
+  const sourceOut = page.locator('[data-frame="asset-1"] [data-port="out"]');
+  const snapIn = snapStep.locator('[data-port="in"]');
+  const outBox = await sourceOut.boundingBox();
+  const inBox = await snapIn.boundingBox();
+  assert(outBox && inBox, 'Snap test ports missing');
+
+  await page.mouse.move(outBox.x + outBox.width / 2, outBox.y + outBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(inBox.x + inBox.width / 2 + 15, inBox.y + inBox.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await sleep(100);
+  assert(await executionCount() === baseExec + 1, 'Cable did not snap within 20px');
+  await page.keyboard.press('Control+z');
+  await sleep(80);
+
+  const rejectSnap = await executionCount();
+  await page.mouse.move(outBox.x + outBox.width / 2, outBox.y + outBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(inBox.x + inBox.width / 2 + 25, inBox.y + inBox.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await sleep(100);
+  assert(await executionCount() === rejectSnap, 'Cable snapped beyond 20px');
+  await page.keyboard.press('Control+z');
+
+  const expressionOut = page.locator('[data-frame="expression-1"] [data-port="out"]');
+  const assetIn = page.locator('[data-frame="asset-1"] [data-port="in"]');
+  const eo = await expressionOut.boundingBox();
+  const ai = await assetIn.boundingBox();
+  assert(eo && ai, 'Cycle test ports missing');
+  await page.mouse.move(eo.x + eo.width / 2, eo.y + eo.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(ai.x + ai.width / 2, ai.y + ai.height / 2, { steps: 8 });
+  await page.locator('.preview-connections .wire-live.invalid').waitFor();
+  await page.mouse.up();
+  await sleep(80);
+  assert(await executionCount() === baseExec, 'Cycle connection was accepted');
+
+  const assetOutBox = await page.locator('[data-frame="asset-1"] [data-port="out"]').boundingBox();
+  const instructionOutBox = await page.locator('[data-frame="instruction-1"] [data-port="out"]').boundingBox();
+  assert(assetOutBox && instructionOutBox, 'Output-to-output test ports missing');
+  await page.mouse.move(assetOutBox.x + assetOutBox.width / 2, assetOutBox.y + assetOutBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(instructionOutBox.x + instructionOutBox.width / 2, instructionOutBox.y + instructionOutBox.height / 2, { steps: 8 });
+  await page.locator('.preview-connections .wire-live.invalid').waitFor();
+  await page.mouse.up();
+  assert(await executionCount() === baseExec, 'Output-to-output connection was accepted');
+
+  const instructionIn = page.locator('[data-frame="instruction-1"] [data-port="in"]');
+  const instructionInBox = await instructionIn.boundingBox();
+  const stageForDetach = await page.locator('.stage').boundingBox();
+  assert(instructionInBox && stageForDetach, 'Detach test geometry missing');
+  await page.mouse.move(instructionInBox.x + instructionInBox.width / 2, instructionInBox.y + instructionInBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(stageForDetach.x + stageForDetach.width * 0.55, stageForDetach.y + stageForDetach.height * 0.72, { steps: 8 });
+  await page.mouse.up();
+  await sleep(100);
+  assert(await executionCount() === baseExec - 1, 'Dragging a connected input to empty space did not delete the cable');
+  await page.keyboard.press('Control+z');
+  await sleep(80);
+  assert(await executionCount() === baseExec, 'Undo did not restore detached cable');
+
+  // Layer contract: selected nodes become one movable, resizable container.
+  const layers0 = await page.locator('.layer').count();
+  const nodes0 = await frameCount();
+  await page.locator('[data-frame="asset-1"]').click({ position: { x: 65, y: 28 } });
+  await page.locator('[data-frame="instruction-1"]').click({ modifiers: ['Shift'], position: { x: 65, y: 28 } });
+  await page.getByRole('button', { name: 'Layer Selection', exact: true }).click();
+  await sleep(100);
+  assert(await page.locator('.layer').count() === layers0 + 1, 'Layer was not created');
+
+  const layer = page.locator('.layer').last();
+  const header = layer.locator('.layer-header');
+  const beforeLayer = await layer.boundingBox();
+  const beforeAsset = await page.locator('[data-frame="asset-1"]').boundingBox();
+  const beforeInstruction = await page.locator('[data-frame="instruction-1"]').boundingBox();
+  assert(beforeLayer && beforeAsset && beforeInstruction, 'Layer move geometry missing');
+  await page.mouse.move(beforeLayer.x + 80, beforeLayer.y - 15);
+  await page.mouse.down();
+  await page.mouse.move(beforeLayer.x + 180, beforeLayer.y + 35, { steps: 8 });
+  await page.mouse.up();
+  await sleep(120);
+  const movedAsset = await page.locator('[data-frame="asset-1"]').boundingBox();
+  const movedInstruction = await page.locator('[data-frame="instruction-1"]').boundingBox();
+  assert(movedAsset && movedInstruction && movedAsset.x > beforeAsset.x + 50 && movedInstruction.x > beforeInstruction.x + 50, 'Layer move did not move contained nodes');
+
+  const beforeResize = await layer.boundingBox();
+  const se = layer.locator('[data-layer-resize="se"]');
+  const seBox = await se.boundingBox();
+  assert(beforeResize && seBox, 'Layer resize handle missing');
+  await page.mouse.move(seBox.x + seBox.width / 2, seBox.y + seBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(seBox.x + 90, seBox.y + 70, { steps: 7 });
+  await page.mouse.up();
+  await sleep(100);
+  const afterResize = await layer.boundingBox();
+  assert(afterResize && afterResize.width > beforeResize.width + 40 && afterResize.height > beforeResize.height + 30, 'Layer resize failed');
+
+  await layer.locator('.layer-delete').click();
+  await sleep(100);
+  assert(await page.locator('.layer').count() === layers0, 'Layer delete failed');
+  assert(await frameCount() === nodes0 - 2, 'Deleting a layer did not delete its contained nodes');
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
+  await sleep(120);
+
   // Semantic relation and hierarchy are reversible.
   await page.locator('[data-frame="asset-1"]').click({ position: { x: 65, y: 28 } });
   await page.locator('[data-frame="instruction-1"]').click({ modifiers: ['Shift'], position: { x: 65, y: 28 } });
