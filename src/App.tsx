@@ -863,7 +863,12 @@ export default function App() {
     const drag = layerDragRef.current;
     const stage = stageRef.current;
     if (!drag || drag.pointerId !== event.pointerId || !stage) return;
-    autoPan(event.clientX, event.clientY);
+    const edge = 72;
+    const panSpeed = 14;
+    const stageRect = stage.getBoundingClientRect();
+    const panX = event.clientX < stageRect.left + edge ? -panSpeed : event.clientX > stageRect.right - edge ? panSpeed : 0;
+    const panY = event.clientY < stageRect.top + edge ? -panSpeed : event.clientY > stageRect.bottom - edge ? panSpeed : 0;
+    if (panX || panY) stage.scrollBy(panX, panY);
     const rect = stage.getBoundingClientRect();
     const worldX = (event.clientX - rect.left + stage.scrollLeft) / scale;
     const worldY = (event.clientY - rect.top + stage.scrollTop) / scale;
@@ -882,7 +887,7 @@ export default function App() {
         return start ? { ...frame, x: Math.max(8, start.x + dx), y: Math.max(8, start.y + dy) } : frame;
       })
     }), { save: false, record: false });
-  }, [autoPan, changeFramework, scale]);
+  }, [changeFramework, scale]);
 
   const onLayerHeaderPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const drag = layerDragRef.current;
