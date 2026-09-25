@@ -829,9 +829,138 @@ export default function App() {
     ], { duration: 230, easing: 'cubic-bezier(.2,.78,.22,1)' });
   }, [reducedMotion]);
 
+  const onLayerHeaderPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>, layer: Layer) => {
+    if ((event.target as HTMLElement).closest('input,button')) return;
+    event.stopPropagation();
+    const stage = stageRef.current;
+    if (!stage) return;
+    const rect = stage.getBoundingClientRect();
+    const startWorldX = (event.clientX - rect.left + stage.scrollLeft) / scale;
+    const startWorldY = (event.clientY - rect.top + stage.scrollTop) / scale;
+    const framePositions: Record<string, { x: number; y: number }> = {};
+    for (const frame of frameworkRef.current.frames) {
+      if (frame.layerId === layer.id) framePositions[frame.id] = { x: frame.x, y: frame.y };
+    }
+    layerDragRef.current = {
+      pointerId: event.pointerId,
+      layerId: layer.id,
+      startWorldX,
+      startWorldY,
+      startLayer: { x: layer.x, y: layer.y },
+      framePositions,
+      before: clone(frameworkRef.current),
+      moved: false
+    };
+    setSelectedLayerId(layer.id);
+    setSelectedFrameIds([]);
+    setSelectedConnectionId(null);
+    playGraphClick('detach');
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }, [scale]);
+
+  const onLayerHeaderPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = layerDragRef.current;
+    const stage = stageRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || !stage) return;
+    autoPan(event.clientX, event.clientY);
+    const rect = stage.getBoundingClientRect();
+    const worldX = (event.clientX - rect.left + stage.scrollLeft) / scale;
+    const worldY = (event.clientY - rect.top + stage.scrollTop) / scale;
+    const rawDx = worldX - drag.startWorldX;
+    const rawDy = worldY - drag.startWorldY;
+    const nextX = Math.max(8, drag.startLayer.x + rawDx);
+    const nextY = Math.max(8, drag.startLayer.y + rawDy);
+    const dx = nextX - drag.startLayer.x;
+    const dy = nextY - drag.startLayer.y;
+    if (Math.abs(dx) + Math.abs(dy) > 1) drag.moved = true;
+    changeFramework(current => ({
+      ...current,
+      layers: (current.layers ?? []).map(layer => layer.id === drag.layerId ? { ...layer, x: nextX, y: nextY } : layer),
+      frames: current.frames.map(frame => {
+        const start = drag.framePositions[frame.id];
+        return start ? { ...frame, x: Math.max(8, start.x + dx), y: Math.max(8, start.y + dy) } : frame;
+      })
+    }), { save: false, record: false });
+  }, [autoPan, changeFramework, scale]);
+
+  const onLayerHeaderPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = layerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    layerDragRef.current = null;
+    if (drag.moved) {
+      recordHistory(drag.before, 'Move Layer');
+      persist(frameworkRef.current, 0);
+    }
+    playGraphClick('connect');
+  }, [persist, recordHistory]);
+
+  const onLayerResizePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>, layer: Layer, edge: LayerResizeState['edge']) => {
+    event.stopPropagation();
+    event.preventDefault();
+    const stage = stageRef.current;
+    if (!stage) return;
+    const rect = stage.getBoundingClientRect();
+    layerResizeRef.current = {
+      pointerId: event.pointerId,
+      layerId: layer.id,
+      edge,
+      startWorldX: (event.clientX - rect.left + stage.scrollLeft) / scale,
+      startWorldY: (event.clientY - rect.top + stage.scrollTop) / scale,
+      startLayer: clone(layer),
+      before: clone(frameworkRef.current),
+      moved: false
+    };
+    setSelectedLayerId(layer.id);
+    setSelectedFrameIds([]);
+    setSelectedConnectionId(null);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }, [scale]);
+
+  const onLayerResizePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const resize = layerResizeRef.current;
+    const stage = stageRef.current;
+    if (!resize || resize.pointerId !== event.pointerId || !stage) return;
+    const rect = stage.getBoundingClientRect();
+    const worldX = (event.clientX - rect.left + stage.scrollLeft) / scale;
+    const worldY = (event.clientY - rect.top + stage.scrollTop) / scale;
+    const dx = worldX - resize.startWorldX;
+    const dy = worldY - resize.startWorldY;
+    const minWidth = 220;
+    const minHeight = 140;
+    let { x, y, width, height } = resize.startLayer;
+    if (resize.edge.includes('e')) width = Math.max(minWidth, resize.startLayer.width + dx);
+    if (resize.edge.includes('s')) height = Math.max(minHeight, resize.startLayer.height + dy);
+    if (resize.edge.includes('w')) {
+      const right = resize.startLayer.x + resize.startLayer.width;
+      x = Math.min(right - minWidth, Math.max(8, resize.startLayer.x + dx));
+      width = right - x;
+    }
+    if (resize.edge.includes('n')) {
+      const bottom = resize.startLayer.y + resize.startLayer.height;
+      y = Math.min(bottom - minHeight, Math.max(8, resize.startLayer.y + dy));
+      height = bottom - y;
+    }
+    if (Math.abs(dx) + Math.abs(dy) > 1) resize.moved = true;
+    changeFramework(current => ({
+      ...current,
+      layers: (current.layers ?? []).map(layer => layer.id === resize.layerId ? { ...layer, x, y, width, height } : layer)
+    }), { save: false, record: false });
+  }, [changeFramework, scale]);
+
+  const onLayerResizePointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const resize = layerResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    layerResizeRef.current = null;
+    if (resize.moved) {
+      recordHistory(resize.before, 'Resize Layer');
+      persist(frameworkRef.current, 0);
+    }
+  }, [persist, recordHistory]);
+
   const onFramePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>, frame: Frame) => {
     if ((event.target as HTMLElement).closest('button,input,textarea,select,[data-port]')) return;
     event.stopPropagation();
+    setSelectedLayerId(null);
     const additive = event.shiftKey || event.metaKey || event.ctrlKey || relationshipPickMode;
     let selection = selectedFrameIds;
     if (!selection.includes(frame.id)) {
