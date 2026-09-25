@@ -1703,7 +1703,7 @@ export default function App() {
               {frameworkList.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
               {!frameworkList.some(item => item.id === framework.id) && <option value={framework.id}>{framework.name}</option>}
             </select>
-            <span>{framework.frames.length} elements · {connectionCount} relationships</span>
+            <span>{framework.frames.length} elements · {connectionCount} relationships · {layers.length} {layers.length === 1 ? 'layer' : 'layers'}</span>
             {selectedFrameIds.length > 1 && <b className="selection-count">{selectedFrameIds.length} selected</b>}
           </div>
           <div className="workspace-controls">
@@ -1716,6 +1716,8 @@ export default function App() {
             </>}
             {selectedFrameIds.length !== 2 && <button className="quiet-action relationship-action" onClick={() => openPanel('relationships')}>Relationships</button>}
             {selectedFrame && <button className="quiet-action inspect-action" onClick={() => openPanel('frame')}>Inspect</button>}
+            <button className="quiet-action layer-action" onClick={createLayer}>{selectedFrameIds.length ? 'Layer Selection' : 'New Layer'}</button>
+            {selectedLayer && <button className="quiet-action layer-delete-action" onClick={() => deleteLayer(selectedLayer.id)}>Delete Layer</button>}
             <button className="quiet-action fit-action" onClick={fitView}>Fit</button>
             <div className="zoom"><button onClick={() => setScale(value => clamp(+(value - 0.1).toFixed(2), 0.35, 1.6))}>−</button><span>{Math.round(scale * 100)}%</span><button onClick={() => setScale(value => clamp(+(value + 0.1).toFixed(2), 0.35, 1.6))}>+</button></div>
           </div>
@@ -1739,8 +1741,60 @@ export default function App() {
           onWheel={onWheel}
         >
           <div className={`world${scale < 0.58 ? ' zoom-far' : ''}`} style={{ width: worldWidth, height: worldHeight, transform: `scale(${scale})` }}>
+            <div className="layers" aria-label="Node layers">
+              {layers.map(layer => {
+                const selected = selectedLayerId === layer.id;
+                return (
+                  <div
+                    key={layer.id}
+                    data-layer={layer.id}
+                    className={`layer${selected ? ' selected' : ''}`}
+                    style={{ left: layer.x, top: layer.y, width: layer.width, height: layer.height }}
+                    onPointerDown={event => {
+                      if ((event.target as HTMLElement).closest('.layer-header,.layer-resize,input,button')) return;
+                      event.stopPropagation();
+                      setSelectedLayerId(layer.id);
+                      setSelectedFrameIds([]);
+                      setSelectedConnectionId(null);
+                    }}
+                  >
+                    <div
+                      className="layer-header"
+                      onPointerDown={event => onLayerHeaderPointerDown(event, layer)}
+                      onPointerMove={onLayerHeaderPointerMove}
+                      onPointerUp={onLayerHeaderPointerUp}
+                      onPointerCancel={onLayerHeaderPointerUp}
+                    >
+                      <span className="layer-grip" aria-hidden="true">⋮⋮</span>
+                      <input
+                        className="layer-name"
+                        value={layer.name}
+                        aria-label="Layer name"
+                        onPointerDown={event => event.stopPropagation()}
+                        onChange={event => updateLayer(layer.id, { name: event.target.value }, false)}
+                      />
+                      <span className="layer-count">{framework.frames.filter(frame => frame.layerId === layer.id).length} nodes</span>
+                      <button className="layer-delete" type="button" title="Delete layer and its nodes" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); deleteLayer(layer.id); }}>×</button>
+                    </div>
+                    {(['n','s','e','w','ne','nw','se','sw'] as LayerResizeState['edge'][]).map(edge => (
+                      <div
+                        key={edge}
+                        className={`layer-resize layer-resize-${edge}`}
+                        data-layer-resize={edge}
+                        onPointerDown={event => onLayerResizePointerDown(event, layer, edge)}
+                        onPointerMove={onLayerResizePointerMove}
+                        onPointerUp={onLayerResizePointerUp}
+                        onPointerCancel={onLayerResizePointerUp}
+                      />
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+
             <svg className="connections" width={worldWidth} height={worldHeight}>
               {framework.connections.map(connection => {
+                if (wire?.detachedConnectionId === connection.id) return null;
                 const source = frameMap.get(connection.fromFrame);
                 const target = frameMap.get(connection.toFrame);
                 if (!source || !target || !visibleIds.has(source.id) || !visibleIds.has(target.id)) return null;
@@ -1764,7 +1818,7 @@ export default function App() {
                       data-connection-hit={connection.id}
                       d={geometry.d}
                       onPointerDown={(event: React.PointerEvent<SVGPathElement>) => event.stopPropagation()}
-                      onClick={(event: React.MouseEvent<SVGPathElement>) => { event.stopPropagation(); setSelectedFrameIds([]); setSelectedConnectionId(connection.id); }}
+                      onClick={(event: React.MouseEvent<SVGPathElement>) => { event.stopPropagation(); setSelectedFrameIds([]); setSelectedLayerId(null); setSelectedConnectionId(connection.id); }}
                     />
                     {selected && semantic && <text className="connection-label" x={geometry.mid.x} y={geometry.mid.y - 9} textAnchor="middle">{relationshipLabel(connection.meaning ?? 'depends-on')}</text>}
                     {selected && (
@@ -1781,8 +1835,6 @@ export default function App() {
                   </g>
                 );
               })}
-              {wire && <path className="wire-live" d={curveGeometry({ x: wire.x1, y: wire.y1 }, { x: wire.x2, y: wire.y2 }).d} />}
-              {wire && <circle className="wire-tip" cx={wire.x2} cy={wire.y2} r="5" />}
             </svg>
 
             <div className="frames">
@@ -1818,9 +1870,16 @@ export default function App() {
                         data-frame-id={frame.id}
                         data-port-id={port.id}
                         title="Connect into this element"
-                        className={`port port-in${wire || tapConnect ? compatible((wire ?? tapConnect)!.outputType, port.type) && (wire ?? tapConnect)!.fromFrame !== frame.id ? ' can-connect' : ' cannot-connect' : ''}`}
+                        className={`port port-in${wire || tapConnect ? (
+                          (wire ?? tapConnect)!.sourceDirection !== 'in' &&
+                          compatible((wire ?? tapConnect)!.outputType, port.type) &&
+                          (wire ?? tapConnect)!.fromFrame !== frame.id &&
+                          !wouldCreateExecutionCycle(framework, (wire ?? tapConnect)!.fromFrame, frame.id, (wire ?? tapConnect)!.detachedConnectionId, { frameId: frame.id, portId: port.id })
+                            ? ' can-connect'
+                            : ' cannot-connect'
+                        ) : ''}${portFeedback?.frameId === frame.id && portFeedback.portId === port.id ? ` feedback-${portFeedback.kind}` : ''}`}
                         style={{ top: 54 + index * 22 }}
-                        onPointerDown={(event: React.PointerEvent<HTMLButtonElement>) => event.stopPropagation()}
+                        onPointerDown={(event: React.PointerEvent<HTMLButtonElement>) => startWireFromInput(event, frame, port, index)}
                         onClick={(event: React.MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); finishTapConnection(frame, port); }}
                       />
                     ))}
@@ -1831,7 +1890,7 @@ export default function App() {
                         data-frame-id={frame.id}
                         data-port-id={port.id}
                         title="Connect from this element"
-                        className={`port port-out${tapConnect?.fromFrame === frame.id && tapConnect.fromPort === port.id ? ' touch-source' : ''}`}
+                        className={`port port-out${tapConnect?.fromFrame === frame.id && tapConnect.fromPort === port.id ? ' touch-source' : ''}${wire || tapConnect ? ' cannot-connect' : ''}${portFeedback?.frameId === frame.id && portFeedback.portId === port.id ? ` feedback-${portFeedback.kind}` : ''}`}
                         style={{ top: 54 + index * 22 }}
                         onPointerDown={(event: React.PointerEvent<HTMLButtonElement>) => startWire(event, frame, port, index)}
                       />
@@ -1840,7 +1899,13 @@ export default function App() {
                 );
               })}
             </div>
-            <div className="canvas-hint"><span>Drag space to move</span><i /><span>Shift selects more</span><i /><span>Ctrl scroll zooms</span></div>
+            {wire && (
+              <svg className="preview-connections" width={worldWidth} height={worldHeight} aria-hidden="true">
+                <path className={`wire-live ${wire.previewState ?? 'neutral'}`} d={curveGeometry({ x: wire.x1, y: wire.y1 }, { x: wire.x2, y: wire.y2 }).d} />
+                <circle className={`wire-tip ${wire.previewState ?? 'neutral'}`} cx={wire.x2} cy={wire.y2} r="5" />
+              </svg>
+            )}
+            <div className="canvas-hint"><span>Drag space to move</span><i /><span>Drag ports to connect</span><i /><span>Drag a connected input to detach</span><i /><span>Ctrl scroll zooms</span></div>
           </div>
         </div>
       </section>
