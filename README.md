@@ -121,3 +121,6 @@ The online Frame executor reads `FW_API` only inside `api/model.js`.
 The browser never receives the key.
 
 No paid fallback is configured.
+## Node graph interaction
+
+The Resolve-style node, cable, and Layer behavior is locked in [NODE_GRAPH_CONTRACT.md](NODE_GRAPH_CONTRACT.md).
