@@ -1879,7 +1879,7 @@ export default function App() {
                             : ' cannot-connect'
                         ) : ''}${portFeedback?.frameId === frame.id && portFeedback.portId === port.id ? ` feedback-${portFeedback.kind}` : ''}`}
                         style={{ top: 54 + index * 22 }}
-                        onPointerDown={(event: React.PointerEvent<HTMLButtonElement>) => startWireFromInput(event, frame, port, index)}
+                        onPointerDown={(event: React.PointerEvent<HTMLButtonElement>) => tapConnect ? event.stopPropagation() : startWireFromInput(event, frame, port, index)}
                         onClick={(event: React.MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); finishTapConnection(frame, port); }}
                       />
                     ))}
