@@ -1545,11 +1545,23 @@ export default function App() {
 
   const fitView = useCallback(() => {
     const stage = stageRef.current;
-    if (!stage || !visibleFrames.length) return;
-    const minX = Math.min(...visibleFrames.map(frame => frame.x));
-    const minY = Math.min(...visibleFrames.map(frame => frame.y));
-    const maxX = Math.max(...visibleFrames.map(frame => frame.x + FRAME_WIDTH));
-    const maxY = Math.max(...visibleFrames.map(frame => frame.y + FRAME_HEIGHT));
+    if (!stage || (!visibleFrames.length && !layers.length)) return;
+    const minX = Math.min(
+      ...visibleFrames.map(frame => frame.x),
+      ...layers.map(layer => layer.x)
+    );
+    const minY = Math.min(
+      ...visibleFrames.map(frame => frame.y),
+      ...layers.map(layer => layer.y)
+    );
+    const maxX = Math.max(
+      ...visibleFrames.map(frame => frame.x + FRAME_WIDTH),
+      ...layers.map(layer => layer.x + layer.width)
+    );
+    const maxY = Math.max(
+      ...visibleFrames.map(frame => frame.y + FRAME_HEIGHT),
+      ...layers.map(layer => layer.y + layer.height)
+    );
     const width = Math.max(1, maxX - minX);
     const height = Math.max(1, maxY - minY);
     const padding = 90;
@@ -1559,7 +1571,7 @@ export default function App() {
       stage.scrollLeft = Math.max(0, (minX + width / 2) * next - stage.clientWidth / 2);
       stage.scrollTop = Math.max(0, (minY + height / 2) * next - stage.clientHeight / 2);
     });
-  }, [visibleFrames]);
+  }, [layers, visibleFrames]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -1580,11 +1592,13 @@ export default function App() {
       if (presetIds[event.key]) addElementPreset(presetIds[event.key]);
       if (event.key === 'Delete' || event.key === 'Backspace') {
         if (selectedConnectionId) removeConnection(selectedConnectionId);
+        else if (selectedLayerId) deleteLayer(selectedLayerId);
         else deleteSelection();
       }
       if (event.key === 'Escape') {
         setSelectedFrameIds([]);
         setSelectedConnectionId(null);
+        setSelectedLayerId(null);
         wireRef.current = null;
         setWire(null);
         setRelationshipPickMode(false);
@@ -1594,7 +1608,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [addElementPreset, copySelection, deleteSelection, duplicateSelection, executeAll, pasteSelection, redo, removeConnection, selectedConnectionId, undo]);
+  }, [addElementPreset, copySelection, deleteLayer, deleteSelection, duplicateSelection, executeAll, pasteSelection, redo, removeConnection, selectedConnectionId, selectedLayerId, undo]);
 
   const onStagePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
@@ -1602,12 +1616,13 @@ export default function App() {
       setTapConnect(null);
       setStatus('READY');
     }
-    if (target.closest('[data-frame],[data-port],[data-connection-hit],[data-remove-connection]') || wireRef.current) return;
+    if (target.closest('[data-frame],[data-layer],[data-port],[data-connection-hit],[data-remove-connection]') || wireRef.current) return;
     if (event.button !== 0 && event.button !== 1) return;
     const stage = stageRef.current;
     if (!stage) return;
     if (!(event.shiftKey || event.metaKey || event.ctrlKey)) setSelectedFrameIds([]);
     setSelectedConnectionId(null);
+    setSelectedLayerId(null);
     panRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: stage.scrollLeft, top: stage.scrollTop };
     stage.classList.add('panning');
     stage.setPointerCapture(event.pointerId);
