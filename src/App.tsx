@@ -515,6 +515,7 @@ export default function App() {
       frameworkRef.current = saved;
       setFramework(saved);
       setSelectedFrameIds(saved.frames[0]?.id ? [saved.frames[0].id] : []);
+      setSelectedLayerId(null);
       pastRef.current = [];
       futureRef.current = [];
       setLoaded(true);
@@ -585,7 +586,7 @@ export default function App() {
     if (!selectedFrame?.outputs.length) return;
     const port = selectedFrame.outputs[0];
     const point = portCenter(selectedFrame, 'out', 0);
-    const next: WireState = { fromFrame: selectedFrame.id, fromPort: port.id, outputType: port.type, x1: point.x, y1: point.y, x2: point.x, y2: point.y };
+    const next: WireState = { fromFrame: selectedFrame.id, fromPort: port.id, outputType: port.type, x1: point.x, y1: point.y, x2: point.x, y2: point.y, sourceDirection: 'out', previewState: 'neutral' };
     setTapConnect(current => current?.fromFrame === next.fromFrame && current.fromPort === next.fromPort ? null : next);
     setSelectedConnectionId(null);
     setPanelOpen(false);
@@ -1249,7 +1250,7 @@ export default function App() {
         pulsePort(target.frameId, target.portId, 'connect');
         playGraphClick('connect');
         setRun(null);
-      } else if (active.detachedConnectionId) {
+      } else if (active.detachedConnectionId && !target) {
         changeFramework(current => ({
           ...current,
           version: (current.version ?? 1) + 1,
@@ -1520,6 +1521,7 @@ export default function App() {
     setFramework(next);
     setSelectedFrameIds(next.frames[0]?.id ? [next.frames[0].id] : []);
     setSelectedConnectionId(null);
+    setSelectedLayerId(null);
     setRun(null);
     setScale(1);
     pastRef.current = [];
@@ -1536,6 +1538,7 @@ export default function App() {
     setFramework(seed);
     setSelectedFrameIds(['instruction-1']);
     setSelectedConnectionId(null);
+    setSelectedLayerId(null);
     setRun(null);
     setScale(1);
     setCableMotion(null);
