@@ -435,3 +435,62 @@
 .port.feedback-detach{animation:port-pop .2s cubic-bezier(.2,.7,.2,1)}
 @keyframes port-pulse{0%{transform:translateY(-50%) scale(1)}45%{transform:translateY(-50%) scale(1.55);box-shadow:0 0 0 7px rgba(91,103,232,.14)}100%{transform:translateY(-50%) scale(1)}}
 @keyframes port-pop{0%{transform:translateY(-50%) scale(1)}42%{transform:translateY(-50%) scale(.72)}70%{transform:translateY(-50%) scale(1.34)}100%{transform:translateY(-50%) scale(1)}}
+
+
+/* Dark Resolve-style graph surface. This changes the graph work area only; node/cable mechanics stay unchanged. */
+.stage{
+  background-color:#1b1d20;
+  background-image:
+    linear-gradient(rgba(255,255,255,.028) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.028) 1px,transparent 1px);
+  background-size:24px 24px;
+}
+.frame{
+  border:1px solid #484c52;
+  border-radius:6px;
+  background:#2a2d31;
+  color:#eceef0;
+  box-shadow:0 8px 18px rgba(0,0,0,.28),0 1px 2px rgba(0,0,0,.35);
+  padding:13px 15px 11px 19px;
+}
+.frame:hover{
+  border-color:#5b6067;
+  box-shadow:0 10px 22px rgba(0,0,0,.34),0 1px 2px rgba(0,0,0,.4);
+}
+.frame.selected{
+  border-color:#7b86ff;
+  box-shadow:0 0 0 1px rgba(123,134,255,.34),0 10px 24px rgba(0,0,0,.36);
+}
+.frame:before{left:7px;top:12px;height:calc(100% - 24px);width:3px;border-radius:2px}
+.frame-title{color:#f1f2f4;font-size:14px;font-weight:680}
+.frame-index{color:#a5aab2}
+.frame-body{color:#c1c5cb}
+.frame-meta{border-top-color:#3d4147;color:#9ba0a8}
+.frame-parent{color:#9ea3aa}
+.frame-collapse{border-color:#4b4f55;background:#34373c;color:#c6c9ce;border-radius:4px}
+.port{
+  width:13px;
+  height:13px;
+  border:2px solid #23262a;
+  box-shadow:0 0 0 1px #626871,0 1px 3px rgba(0,0,0,.45);
+}
+.port-in{left:-7px;background:#9da3ab}
+.port-out{right:-7px}
+.connection-main{stroke:#8b9098}
+.connection-halo{stroke:rgba(255,255,255,.055)}
+.connection-group:hover .connection-main,.connection-group.selected .connection-main{stroke:#a7afff}
+.connection-group:hover .connection-halo,.connection-group.selected .connection-halo{stroke:rgba(123,134,255,.16)}
+.connection-label{fill:#c8cbd0;stroke:#1b1d20}
+.connection-remove circle{fill:#30343a;stroke:#686e77}
+.connection-remove path{stroke:#d4d7db}
+.canvas-hint{background:rgba(31,34,38,.88);color:#aeb3ba;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.canvas-hint i{background:#626871}
+.layer{
+  border-color:rgba(144,150,159,.42);
+  background:rgba(118,126,138,.075);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.025);
+}
+.layer.selected{border-color:rgba(135,146,255,.76);box-shadow:inset 0 0 0 1px rgba(135,146,255,.08)}
+.layer-header{border-color:#555a62;background:#30343a;color:#eef0f2;box-shadow:0 2px 5px rgba(0,0,0,.22)}
+.layer-name{color:#f2f3f4}
+.layer-count{color:#aeb3bb}
