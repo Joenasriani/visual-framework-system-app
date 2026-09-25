@@ -19,6 +19,7 @@ import type {
   FrameworkGoal,
   FrameworkRun,
   FrameworkScope,
+  Layer,
   Port,
   Proposal,
   RelationshipMeaning,
@@ -361,6 +362,29 @@ interface WireState {
   y1: number;
   x2: number;
   y2: number;
+  detachedConnectionId?: string;
+  sourceDirection?: 'out' | 'in';
+  previewState?: 'neutral' | 'valid' | 'invalid';
+}
+interface LayerDragState {
+  pointerId: number;
+  layerId: string;
+  startWorldX: number;
+  startWorldY: number;
+  startLayer: { x: number; y: number };
+  framePositions: Record<string, { x: number; y: number }>;
+  before: FrameworkDocument;
+  moved: boolean;
+}
+interface LayerResizeState {
+  pointerId: number;
+  layerId: string;
+  edge: 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+  startWorldX: number;
+  startWorldY: number;
+  startLayer: Layer;
+  before: FrameworkDocument;
+  moved: boolean;
 }
 interface ClipboardState {
   frames: Frame[];
@@ -368,6 +392,55 @@ interface ClipboardState {
 }
 type SideMode = 'frame' | 'issues' | 'runs' | 'proposal' | 'framework' | 'library' | 'relationships';
 type ScopeMode = FrameworkScope['kind'];
+
+function playGraphClick(kind: 'connect' | 'detach') {
+  try {
+    const AudioCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtor) return;
+    const context = new AudioCtor();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = kind === 'connect' ? 620 : 430;
+    gain.gain.setValueAtTime(0.0001, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(kind === 'connect' ? 0.028 : 0.022, context.currentTime + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.055);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.06);
+    oscillator.addEventListener('ended', () => void context.close());
+  } catch {
+    // Audio feedback is optional; graph interaction must never depend on it.
+  }
+}
+
+function wouldCreateExecutionCycle(
+  framework: FrameworkDocument,
+  fromFrame: string,
+  toFrame: string,
+  ignoreConnectionId?: string,
+  replacingInput?: { frameId: string; portId: string }
+) {
+  if (fromFrame === toFrame) return true;
+  const adjacency = new Map<string, string[]>();
+  for (const connection of framework.connections) {
+    if (connection.id === ignoreConnectionId) continue;
+    if (connection.kind === 'semantic') continue;
+    if (replacingInput && connection.toFrame === replacingInput.frameId && connection.toPort === replacingInput.portId) continue;
+    adjacency.set(connection.fromFrame, [...(adjacency.get(connection.fromFrame) ?? []), connection.toFrame]);
+  }
+  const seen = new Set<string>();
+  const queue = [toFrame];
+  while (queue.length) {
+    const current = queue.shift()!;
+    if (current === fromFrame) return true;
+    if (seen.has(current)) continue;
+    seen.add(current);
+    queue.push(...(adjacency.get(current) ?? []));
+  }
+  return false;
+}
 
 function descendants(framework: FrameworkDocument, rootId: string) {
   const found = new Set<string>();
@@ -390,6 +463,8 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [selectedFrameIds, setSelectedFrameIds] = useState<string[]>(['instruction-1']);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
+  const [portFeedback, setPortFeedback] = useState<{ frameId: string; portId: string; kind: 'connect' | 'detach' } | null>(null);
   const [run, setRun] = useState<FrameworkRun | null>(null);
   const [runs, setRuns] = useState<FrameworkRun[]>([]);
   const [status, setStatus] = useState('READY');
@@ -407,6 +482,8 @@ export default function App() {
   const [relationshipMeaning, setRelationshipMeaning] = useState<RelationshipMeaning>('supports');
   const stageRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const layerDragRef = useRef<LayerDragState | null>(null);
+  const layerResizeRef = useRef<LayerResizeState | null>(null);
   const panRef = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
   const persistTimer = useRef<number | null>(null);
   const clipboardRef = useRef<ClipboardState | null>(null);
