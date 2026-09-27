@@ -440,7 +440,8 @@ try {
 
   parallelTrace.length = 0;
   await page.reload({ waitUntil: 'networkidle' });
-  await page.getByText('Parallel Branch Merge Proof', { exact: true }).first().waitFor();
+  await page.locator('[data-frame="parallel-source"]').waitFor();
+  assert(await page.locator('.framework-switch').inputValue() === 'framework-parallel-proof', 'Parallel proof Framework did not become active');
   await page.locator('.run-button').click();
   await page.getByText('PASSED', { exact: true }).first().waitFor({ timeout: 15000 });
 
@@ -528,7 +529,8 @@ try {
   assert(await frameCount() === portableFrameCount - 1, 'Destructive edit before import proof failed');
 
   await page.locator('[data-framework-import]').setInputFiles(exportPath);
-  await page.getByText('Parallel Branch Merge Proof', { exact: true }).first().waitFor();
+  await page.locator('[data-frame="parallel-source"]').waitFor();
+  assert(await page.locator('.framework-switch').inputValue() === 'framework-parallel-proof', 'Imported Framework did not become active');
   await sleep(120);
   assert(await frameCount() === portableFrameCount, 'Imported Framework did not restore all Frames');
   assert(await executionCount() === portableExecutionCount, 'Imported Framework did not restore all execution connections');
