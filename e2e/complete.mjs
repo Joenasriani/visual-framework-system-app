@@ -361,7 +361,7 @@ try {
   await page.getByText('Compressed Core', { exact: true }).waitFor();
   await page.waitForFunction(() => document.querySelectorAll('.framework-switch option').length >= 2);
   await page.locator('.framework-switch').selectOption('framework-main');
-  assert(await page.locator('.framework-switch').inputValue() === 'framework-main', 'Source Framework switch failed');
+  await page.waitForFunction(() => document.querySelector('.framework-switch')?.value === 'framework-main');
   await page.getByText('Start here', { exact: true }).waitFor();
 
   // PWA reloads offline and an online Frame fails explicitly without network.
