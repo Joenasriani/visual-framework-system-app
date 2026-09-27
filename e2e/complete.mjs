@@ -220,9 +220,13 @@ try {
   await page.mouse.move(gripBox.x + gripBox.width / 2 + 100, gripBox.y + gripBox.height / 2 + 50, { steps: 8 });
   await page.mouse.up();
   await sleep(120);
+  const movedLayer = await layer.boundingBox();
   const movedAsset = await page.locator('[data-frame="asset-1"]').boundingBox();
   const movedInstruction = await page.locator('[data-frame="instruction-1"]').boundingBox();
-  assert(movedAsset && movedInstruction && movedAsset.x > beforeAsset.x + 50 && movedInstruction.x > beforeInstruction.x + 50, 'Layer move did not move contained nodes');
+  assert(
+    movedLayer && movedAsset && movedInstruction && movedAsset.x > beforeAsset.x + 50 && movedInstruction.x > beforeInstruction.x + 50,
+    `Layer move failed geometry: layer ${JSON.stringify({ before: beforeLayer, after: movedLayer })}; asset ${JSON.stringify({ before: beforeAsset, after: movedAsset })}; instruction ${JSON.stringify({ before: beforeInstruction, after: movedInstruction })}`
+  );
 
   const beforeResize = await layer.boundingBox();
   const se = layer.locator('[data-layer-resize="se"]');
