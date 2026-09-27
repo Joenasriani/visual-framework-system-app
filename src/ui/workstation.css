@@ -50,3 +50,234 @@ html,body,#root{background:var(--bg);color:var(--ink)}
 .model-test-ok{border-color:#617a69;color:#cfe2d5}
 .model-test-error{border-color:#855f5c;color:#efcfcc}
 .model-actions{display:grid;gap:7px;margin-top:14px}
+
+
+/* Quiet motion layer: soft tactile feedback only. No graph geometry or execution behavior changes. */
+:root{
+  --motion-fast:110ms;
+  --motion-ui:160ms;
+  --motion-panel:190ms;
+  --motion-ease:cubic-bezier(.22,.72,.24,1);
+  --motion-ease-out:cubic-bezier(.18,.72,.2,1);
+}
+
+/* Controls: tiny response, never bouncy. */
+.app-shell button:not(:disabled),
+.app-shell input,
+.app-shell textarea,
+.app-shell select{
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
+}
+.app-shell button:not(.port):not(.layer-resize):not(:disabled){
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease),
+    transform 90ms var(--motion-ease-out);
+}
+.app-shell button:active:not(:disabled):not(.port):not(.layer-resize){
+  transform:translateY(1px);
+}
+.run-button:hover:not(:disabled),
+.inspector-run:hover:not(:disabled){
+  transform:translateY(-1px);
+}
+.run-button:active:not(:disabled),
+.inspector-run:active:not(:disabled){
+  transform:translateY(0);
+}
+
+/* Workspace chrome should change almost imperceptibly. */
+.app-shell{
+  transition:grid-template-columns var(--motion-panel) var(--motion-ease);
+}
+.workspace-head,
+.structure-bar,
+.first-use-guide,
+.canvas-hint,
+.connection-actions,
+.run-strip{
+  transition:
+    background-color var(--motion-ui) var(--motion-ease),
+    border-color var(--motion-ui) var(--motion-ease),
+    color var(--motion-ui) var(--motion-ease),
+    opacity var(--motion-ui) var(--motion-ease),
+    box-shadow var(--motion-ui) var(--motion-ease);
+}
+
+/* First-use and transient surfaces arrive softly, not theatrically. */
+.empty-canvas{
+  animation:soft-surface-in var(--motion-panel) var(--motion-ease-out) both;
+}
+.first-use-guide{
+  animation:soft-bar-in var(--motion-ui) var(--motion-ease-out) both;
+}
+.run-strip,
+.connection-actions{
+  animation:soft-float-in var(--motion-ui) var(--motion-ease-out) both;
+}
+.model-test-state{
+  animation:soft-message-in var(--motion-ui) var(--motion-ease-out) both;
+}
+
+/* Inspector keeps the same layout; only its content settles into place. */
+.inspector.panel-open{
+  animation:soft-panel-in var(--motion-panel) var(--motion-ease-out) both;
+}
+.inspector-head,
+.inspector .field,
+.inspector .seg-field,
+.inspector .order-block,
+.inspector .item-details,
+.inspector .trace-block,
+.inspector .proposal-list,
+.inspector .run-list,
+.inspector .framework-inspector,
+.inspector .model-provider-list,
+.inspector .model-actions{
+  transition:
+    opacity var(--motion-ui) var(--motion-ease),
+    border-color var(--motion-ui) var(--motion-ease),
+    background-color var(--motion-ui) var(--motion-ease);
+}
+
+/* Keep nodes mechanically identical; soften only visual state changes. */
+.frame{
+  transition:
+    border-color var(--motion-ui) var(--motion-ease),
+    background-color var(--motion-ui) var(--motion-ease),
+    box-shadow var(--motion-ui) var(--motion-ease),
+    opacity var(--motion-ui) var(--motion-ease);
+}
+.frame-title,
+.frame-body,
+.frame-meta,
+.frame-parent{
+  transition:
+    color var(--motion-ui) var(--motion-ease),
+    opacity var(--motion-ui) var(--motion-ease);
+}
+
+/* Preserve the existing snap/pop mechanics, but ease the visual approach. */
+.port{
+  transition:
+    opacity 130ms var(--motion-ease),
+    box-shadow 140ms var(--motion-ease),
+    background-color 130ms var(--motion-ease),
+    border-color 130ms var(--motion-ease);
+}
+.stage.connecting .port.can-connect{
+  animation:soft-target 1.45s ease-in-out infinite;
+}
+.connection-main,
+.connection-halo,
+.connection-label,
+.wire-live,
+.wire-tip{
+  transition:
+    stroke var(--motion-fast) var(--motion-ease),
+    fill var(--motion-fast) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease),
+    stroke-width var(--motion-fast) var(--motion-ease);
+}
+.connection-label{
+  transition:
+    fill var(--motion-fast) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease);
+}
+
+/* Mobile bar and touch feedback stay visually compact while feeling less abrupt. */
+.mobile-action-bar button{
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease),
+    transform 90ms var(--motion-ease-out);
+}
+.mobile-action-bar button:active:not(:disabled){
+  transform:translateY(1px);
+}
+
+/* Soft disclosure/reveal for result and settings sections. */
+.readable-result details,
+.item-details,
+.model-provider-list button,
+.order-list button,
+.run-list button,
+.issue-list button{
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease);
+}
+.readable-result details[open]{
+  animation:soft-detail-in var(--motion-ui) var(--motion-ease-out) both;
+}
+
+@keyframes soft-surface-in{
+  from{opacity:0;transform:translateX(-50%) translateY(4px)}
+  to{opacity:1;transform:translateX(-50%) translateY(0)}
+}
+@keyframes soft-bar-in{
+  from{opacity:.72;transform:translateY(-2px)}
+  to{opacity:1;transform:translateY(0)}
+}
+@keyframes soft-panel-in{
+  from{opacity:.72;transform:translateX(4px)}
+  to{opacity:1;transform:translateX(0)}
+}
+@keyframes soft-float-in{
+  from{opacity:0;transform:translateY(4px)}
+  to{opacity:1;transform:translateY(0)}
+}
+@keyframes soft-message-in{
+  from{opacity:0;transform:translateY(3px)}
+  to{opacity:1;transform:translateY(0)}
+}
+@keyframes soft-detail-in{
+  from{opacity:.76}
+  to{opacity:1}
+}
+@keyframes soft-target{
+  0%,100%{box-shadow:0 0 0 4px #d9dde322}
+  50%{box-shadow:0 0 0 6px #d9dde33a}
+}
+
+/* On phones/tablets the inspector enters from the edge/bottom by only a few pixels. */
+@media(max-width:1100px){
+  .inspector.panel-open{
+    animation:soft-panel-in-tablet var(--motion-panel) var(--motion-ease-out) both;
+  }
+}
+@media(max-width:767px){
+  .inspector.panel-open{
+    animation:soft-panel-in-mobile var(--motion-panel) var(--motion-ease-out) both;
+  }
+}
+@keyframes soft-panel-in-tablet{
+  from{opacity:.74;transform:translateX(5px)}
+  to{opacity:1;transform:translateX(0)}
+}
+@keyframes soft-panel-in-mobile{
+  from{opacity:.74;transform:translateY(5px)}
+  to{opacity:1;transform:translateY(0)}
+}
+
+/* Respect OS accessibility preference absolutely. */
+@media(prefers-reduced-motion:reduce){
+  .app-shell,
+  .app-shell *,
+  .app-shell *::before,
+  .app-shell *::after{
+    animation:none!important;
+    transition:none!important;
+    scroll-behavior:auto!important;
+  }
+}
