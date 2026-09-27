@@ -153,11 +153,15 @@ try {
   await editItem(keys, 'Keyboard item', 'I can edit without dragging.');
   await keys.locator('.frame').focus();
   await keys.waitForFunction(() => document.activeElement?.classList.contains('frame'));
-  console.log('KEYBOARD BEFORE', await keys.evaluate(() => ({ focused: document.activeElement?.outerHTML, editor: document.querySelector('.inspector')?.className })));
   await keys.keyboard.press('Enter');
   await keys.screenshot({ path: `${evidence}/06-keyboard-diagnostic.png` });
-  console.log('KEYBOARD AFTER', await keys.evaluate(() => ({ focused: document.activeElement?.outerHTML, editor: document.querySelector('.inspector')?.className, content: document.querySelector('.inspector')?.textContent })));
   await keys.getByLabel('Content', { exact: true }).waitFor();
+  assert(await keys.getByLabel('Content', { exact: true }).inputValue() === 'I can edit without dragging.', 'Reopening the editor must preserve saved text under the same accessible field name');
+  await keys.getByLabel('Content', { exact: true }).fill('Edited again using the keyboard.');
+  await keys.keyboard.press('Escape');
+  await keys.locator('.frame').focus();
+  await keys.keyboard.press('Enter');
+  assert(await keys.getByLabel('Content', { exact: true }).inputValue() === 'Edited again using the keyboard.', 'A second keyboard edit must survive reopening');
   await keys.screenshot({ path: `${evidence}/06-keyboard-tablet.png` });
   results.push('Keyboard: create and reopen item with Enter; reduced-motion layout at 1024px');
   await keyboard.close();
