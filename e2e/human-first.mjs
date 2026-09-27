@@ -27,6 +27,7 @@ async function editItem(page, name, content) {
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel('Content', { exact: true }).fill(content);
   await page.keyboard.press('Escape');
+  await page.locator('.inspector.panel-open').waitFor({ state: 'hidden' });
 }
 async function count(page, expected) {
   await page.waitForFunction(n => document.querySelectorAll('.frame').length === n, expected);
@@ -151,7 +152,11 @@ try {
   await keys.keyboard.press('Enter');
   await editItem(keys, 'Keyboard item', 'I can edit without dragging.');
   await keys.locator('.frame').focus();
+  await keys.waitForFunction(() => document.activeElement?.classList.contains('frame'));
+  console.log('KEYBOARD BEFORE', await keys.evaluate(() => ({ focused: document.activeElement?.outerHTML, editor: document.querySelector('.inspector')?.className })));
   await keys.keyboard.press('Enter');
+  await keys.screenshot({ path: `${evidence}/06-keyboard-diagnostic.png` });
+  console.log('KEYBOARD AFTER', await keys.evaluate(() => ({ focused: document.activeElement?.outerHTML, editor: document.querySelector('.inspector')?.className, content: document.querySelector('.inspector')?.textContent })));
   await keys.getByLabel('Content', { exact: true }).waitFor();
   await keys.screenshot({ path: `${evidence}/06-keyboard-tablet.png` });
   results.push('Keyboard: create and reopen item with Enter; reduced-motion layout at 1024px');
