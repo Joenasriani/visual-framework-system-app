@@ -157,16 +157,16 @@ const ELEMENT_PRESETS: ElementPreset[] = [
   { id: 'observation', label: 'Observation', technical: 'Observation / recorded event', category: 'Research & Reasoning', kind: 'asset', role: 'observation', glyph: '○' },
   { id: 'claim', label: 'Claim', technical: 'Proposition / claim', category: 'Research & Reasoning', kind: 'asset', role: 'claim', glyph: 'C' },
   { id: 'evidence', label: 'Evidence', technical: 'Empirical evidence / observation / measurement', category: 'Research & Reasoning', kind: 'asset', role: 'evidence', glyph: '✓' },
-  { id: 'hypothesis', label: 'Hypothesis', technical: 'Hypothesis', category: 'Research & Reasoning', kind: 'asset', role: 'hypothesis', epistemicState: 'hypothesized', glyph: 'H' },
+  { id: 'hypothesis', label: 'Possible Explanation', technical: 'Hypothesis', category: 'Research & Reasoning', kind: 'asset', role: 'hypothesis', epistemicState: 'hypothesized', glyph: 'H' },
   { id: 'assumption', label: 'Assumption', technical: 'Assumption / premise', category: 'Research & Reasoning', kind: 'asset', role: 'assumption', epistemicState: 'assumed', glyph: 'A' },
   { id: 'mechanism', label: 'Mechanism', technical: 'Proposed mechanism', category: 'Research & Reasoning', kind: 'asset', role: 'cause', epistemicState: 'hypothesized', glyph: 'M' },
   { id: 'prediction', label: 'Prediction', technical: 'Testable prediction', category: 'Research & Reasoning', kind: 'asset', role: 'hypothesis', epistemicState: 'hypothesized', glyph: 'Pr' },
-  { id: 'alternative-explanation', label: 'Alternative Explanation', technical: 'Competing hypothesis / explanatory account', category: 'Research & Reasoning', kind: 'asset', role: 'alternative', epistemicState: 'hypothesized', glyph: 'Alt' },
+  { id: 'alternative-explanation', label: 'Another Explanation', technical: 'Competing hypothesis / explanatory account', category: 'Research & Reasoning', kind: 'asset', role: 'alternative', epistemicState: 'hypothesized', glyph: 'Alt' },
   { id: 'counterargument', label: 'Counterargument', technical: 'Counterargument / challenge', category: 'Research & Reasoning', kind: 'asset', role: 'contradiction', glyph: '↯' },
   { id: 'limit', label: 'Limit', technical: 'Boundary condition / applicability limit', category: 'Research & Reasoning', kind: 'asset', role: 'constraint', glyph: 'L' },
   { id: 'unknown', label: 'Unknown', technical: 'Unresolved information', category: 'Research & Reasoning', kind: 'asset', role: 'unknown', epistemicState: 'unresolved', glyph: '?' },
   { id: 'gap', label: 'Gap', technical: 'Evidential / reasoning gap', category: 'Research & Reasoning', kind: 'asset', role: 'unknown', epistemicState: 'unresolved', glyph: '□' },
-  { id: 'conclusion', label: 'Conclusion', technical: 'Conclusion / finding', category: 'Research & Reasoning', kind: 'asset', role: 'result', epistemicState: 'inferred', glyph: '∴' },
+  { id: 'conclusion', label: 'Result', technical: 'Conclusion / finding', category: 'Research & Reasoning', kind: 'asset', role: 'result', epistemicState: 'inferred', glyph: '∴' },
 
   { id: 'process', label: 'Process', technical: 'Executable process / transformation', category: 'Framework Tools', kind: 'instruction', role: 'instruction', epistemicState: 'known', glyph: '→' },
   { id: 'rule', label: 'Rule', technical: 'Deterministic or descriptive rule', category: 'Framework Tools', kind: 'expression', role: 'evaluation', epistemicState: 'known', glyph: 'ƒ' },
@@ -176,6 +176,14 @@ const ELEMENT_PRESETS: ElementPreset[] = [
 
 const FEATURED_ELEMENT_IDS = ['idea', 'question', 'observation', 'assumption', 'evidence'];
 const FEATURED_ELEMENT_PRESETS = FEATURED_ELEMENT_IDS.map(id => ELEMENT_PRESETS.find(preset => preset.id === id)!).filter(Boolean);
+const BEGINNER_ELEMENT_IDS = new Set([
+  'idea','thought','feeling','belief','goal',
+  'trigger','behavior','context','outcome',
+  'person','group',
+  'question','observation','claim','evidence','assumption','hypothesis','alternative-explanation','conclusion',
+  'process','rule','test','run-result'
+]);
+const BEGINNER_ELEMENT_PRESETS = ELEMENT_PRESETS.filter(preset => BEGINNER_ELEMENT_IDS.has(preset.id));
 const ELEMENT_CATEGORIES: ElementPreset['category'][] = ['Mind & Experience', 'Behavior & Context', 'People & Society', 'Research & Reasoning', 'Framework Tools'];
 const ELEMENT_CATEGORY_LABELS: Record<ElementPreset['category'], string> = {
   'Mind & Experience': 'Thoughts & Feelings',
@@ -292,6 +300,12 @@ const RELATIONSHIP_PRESETS: RelationshipPreset[] = [
   { meaning: 'part-of', label: 'Is Part Of', technical: 'Part-whole relation', category: 'Structure' }
 ];
 
+const BEGINNER_RELATIONSHIP_MEANINGS = new Set<RelationshipMeaning>([
+  'influences','causes','depends-on',
+  'supports','evidence-for','challenges','contradicts',
+  'alternative-to','contains','part-of'
+]);
+const BEGINNER_RELATIONSHIP_PRESETS = RELATIONSHIP_PRESETS.filter(preset => BEGINNER_RELATIONSHIP_MEANINGS.has(preset.meaning));
 const RELATIONSHIP_CATEGORIES: RelationshipPreset['category'][] = [
   'Influence & Explanation',
   'Evidence & Reasoning',
@@ -717,7 +731,7 @@ export default function App() {
       y = Math.max(16, centerY - height / 2);
     }
 
-    const layer: Layer = { id, name: `Layer ${count}`, x, y, width, height };
+    const layer: Layer = { id, name: `Group ${count}`, x, y, width, height };
     const ids = new Set(selected.map(frame => frame.id));
     changeFramework(current => ({
       ...current,
@@ -772,7 +786,7 @@ export default function App() {
       epistemicState: preset.epistemicState ?? 'unknown',
       inputs: preset.kind === 'asset' ? [{ id: 'in', name: 'stimulus', type: 'any' }] : base.inputs,
       outputs: preset.kind === 'asset' ? [{ id: 'out', name: 'response', type: 'any' }] : base.outputs,
-      value: preset.kind === 'asset' ? preset.technical : base.value,
+      value: preset.kind === 'asset' ? (ELEMENT_EXPLANATIONS[preset.id] ?? preset.label) : base.value,
       body: preset.kind === 'instruction' ? 'Describe the response or change.' : base.body
     };
     changeFramework(current => ({ ...current, version: (current.version ?? 1) + 1, updatedAt: new Date().toISOString(), frames: [...current.frames, frame] }), { label: `Add ${preset.label}` });
@@ -1896,7 +1910,7 @@ export default function App() {
                       <input
                         className="layer-name"
                         value={layer.name}
-                        aria-label="Layer name"
+                        aria-label="Group name"
                         onPointerDown={event => event.stopPropagation()}
                         onChange={event => updateLayer(layer.id, { name: event.target.value }, false)}
                       />
@@ -2137,7 +2151,7 @@ function RelationshipLibraryInspector({ selectedCount, onConnect, onClose }: {
       <div className="order-block" key={category}>
         <span>{RELATIONSHIP_CATEGORY_LABELS[category]}</span>
         <div className="order-list">
-          {RELATIONSHIP_PRESETS.filter(preset => preset.category === category).map(preset => (
+          {BEGINNER_RELATIONSHIP_PRESETS.filter(preset => preset.category === category).map(preset => (
             <button
               key={preset.meaning}
               title={preset.label}
@@ -2161,7 +2175,7 @@ function ElementLibraryInspector({ onAdd, onClose }: { onAdd: (presetId: string)
       <div className="order-block" key={category}>
         <span>{ELEMENT_CATEGORY_LABELS[category]}</span>
         <div className="order-list">
-          {ELEMENT_PRESETS.filter(preset => preset.category === category).map(preset => (
+          {BEGINNER_ELEMENT_PRESETS.filter(preset => preset.category === category).map(preset => (
             <button key={preset.id} title={ELEMENT_EXPLANATIONS[preset.id] ?? preset.label} onClick={() => onAdd(preset.id)}>
               {preset.label} · {ELEMENT_EXPLANATIONS[preset.id] ?? ''}
             </button>
