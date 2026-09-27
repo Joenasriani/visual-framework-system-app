@@ -1,3 +1,4 @@
+import { modelRequestConfig } from '../model/settings';
 import type { Connection, Frame, FrameworkDocument, FrameworkRun, RunEvent, RunStep, ValueType } from './types';
 
 export const compatible = (outType: ValueType, inType: ValueType) =>
@@ -75,29 +76,41 @@ function evaluateExpression(body: string, input: unknown): unknown {
   throw new Error(`Unsupported expression: ${expression}`);
 }
 
-async function callModel(frame: Frame, input: unknown): Promise<string> {
+type ExecutionResult = {
+  value: unknown;
+  modelProvider?: string;
+  modelId?: string;
+};
+
+async function callModel(frame: Frame, input: unknown): Promise<ExecutionResult> {
   const instruction = frame.body?.trim() || `Respond using ${frame.title} as the active perspective.`;
   const stimulus = input ?? (frame.kind === 'asset' ? frame.value ?? null : null);
+  const config = modelRequestConfig();
   const response = await fetch('/api/model', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: frame.title, instruction, input: stimulus })
+    body: JSON.stringify({ title: frame.title, instruction, input: stimulus, ...config })
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data?.error || 'MODEL FAILED');
   if (typeof data?.output !== 'string' || !data.output.trim()) throw new Error('EMPTY MODEL OUTPUT');
-  return data.output.trim();
+  const requestedModel = 'model' in config ? config.model : undefined;
+  return {
+    value: data.output.trim(),
+    modelProvider: typeof data?.provider === 'string' ? data.provider : config.provider,
+    modelId: typeof data?.model === 'string' ? data.model : requestedModel
+  };
 }
 
-async function executeFrameOperation(frame: Frame, input: unknown): Promise<unknown> {
+async function executeFrameOperation(frame: Frame, input: unknown): Promise<ExecutionResult> {
   if (frame.operation === 'MODEL') return callModel(frame, input);
-  if (frame.kind === 'asset') return frame.value ?? frame.body;
+  if (frame.kind === 'asset') return { value: frame.value ?? frame.body };
   if (frame.kind === 'expression') {
-    return frame.expressionClass === 'DESCRIPTIVE' ? input : evaluateExpression(frame.body, input);
+    return { value: frame.expressionClass === 'DESCRIPTIVE' ? input : evaluateExpression(frame.body, input) };
   }
-  if (frame.kind === 'check') return Boolean(input);
-  if (frame.kind === 'instruction') return `${frame.body}${input == null ? '' : `\n${String(input)}`}`.trim();
-  return input;
+  if (frame.kind === 'check') return { value: Boolean(input) };
+  if (frame.kind === 'instruction') return { value: `${frame.body}${input == null ? '' : `\n${String(input)}`}`.trim() };
+  return { value: input };
 }
 
 function gatheredInput(connections: Connection[], outputs: Map<string, unknown>, frameId: string): unknown {
@@ -110,12 +123,14 @@ function runId() {
   return `run-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 }
 
-function stepProvenance(runIdValue: string, frame: Frame) {
+function stepProvenance(runIdValue: string, frame: Frame, result?: ExecutionResult) {
   return {
     origin: frame.operation === 'MODEL' ? 'model' as const : 'deterministic' as const,
     createdAt: new Date().toISOString(),
     runId: runIdValue,
-    frameId: frame.id
+    frameId: frame.id,
+    ...(result?.modelProvider ? { modelProvider: result.modelProvider } : {}),
+    ...(result?.modelId ? { modelId: result.modelId } : {})
   };
 }
 
@@ -158,7 +173,8 @@ export async function runFramework(
     onEvent?.({ type: 'frame-started', frameId: frame.id, run: { ...run, steps: [...run.steps] } });
     const started = performance.now();
     try {
-      const output = await executeFrameOperation(frame, input);
+      const result = await executeFrameOperation(frame, input);
+      const output = result.value;
       outputs.set(frame.id, output);
       const step: RunStep = {
         frameId: frame.id,
@@ -167,7 +183,7 @@ export async function runFramework(
         output,
         durationMs: +(performance.now() - started).toFixed(2),
         executor: frame.operation,
-        provenance: stepProvenance(run.id, frame)
+        provenance: stepProvenance(run.id, frame, result)
       };
       run.steps = [...run.steps, step];
       run.activeFrameId = null;
@@ -226,10 +242,11 @@ export async function runSingleFrame(
 
   const started = performance.now();
   try {
-    const output = await executeFrameOperation(frame, input);
+    const result = await executeFrameOperation(frame, input);
+    const output = result.value;
     return {
       ...run, status: 'ok', endedAt: new Date().toISOString(), activeFrameId: null,
-      steps: [{ frameId, status: 'ok', input, output, durationMs: +(performance.now() - started).toFixed(2), executor: frame.operation, provenance: stepProvenance(run.id, frame) }]
+      steps: [{ frameId, status: 'ok', input, output, durationMs: +(performance.now() - started).toFixed(2), executor: frame.operation, provenance: stepProvenance(run.id, frame, result) }]
     };
   } catch (error) {
     return {
