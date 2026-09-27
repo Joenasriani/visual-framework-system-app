@@ -1,0 +1,134 @@
+name: Human-first MVP review
+on:
+  push:
+    branches: [mvp-human-first-2026-09-27, main]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'e2e/**'
+      - 'package.json'
+      - 'vite.config.ts'
+      - '.github/workflows/human-first-review.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'e2e/**'
+      - 'package.json'
+      - 'vite.config.ts'
+      - '.github/workflows/human-first-review.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: human-first-review-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Record the exact source under test
+        run: |
+          mkdir -p evidence/human-first
+          git rev-parse HEAD > evidence/source-commit.txt
+          echo "Source tested: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo 'Automated responses are mocked. Real human use and live AI are separate, unverified gates.' >> "$GITHUB_STEP_SUMMARY"
+      - run: npm install --no-audit --no-fund
+      - name: Type checking
+        id: types
+        run: npm run typecheck 2>&1 | tee evidence/typecheck.log
+      - name: Production build
+        id: build
+        run: npm run build 2>&1 | tee evidence/build.log
+      - run: npm install --no-save playwright agent-browser
+      - run: npx playwright install --with-deps chromium
+      - name: Start the built source
+        id: serve
+        run: |
+          nohup ./node_modules/.bin/vite preview --host 127.0.0.1 --port 4173 >evidence/preview.log 2>&1 &
+          echo $! >/tmp/vfa-preview.pid
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173 >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat evidence/preview.log
+          exit 1
+      - name: Capture the actual first screen
+        continue-on-error: true
+        run: |
+          npx agent-browser open http://127.0.0.1:4173
+          npx agent-browser snapshot -i > evidence/first-screen.txt
+          npx agent-browser screenshot evidence/first-screen.png
+          npx agent-browser close
+      - name: First-use behavior and responsive evidence
+        id: firstuse
+        run: node e2e/human-first.mjs 2>&1 | tee evidence/first-use.log
+        env:
+          LIVE_URL: http://127.0.0.1:4173
+      - name: Existing beginner surface regression
+        id: beginner
+        if: ${{ !cancelled() && steps.serve.outcome == 'success' }}
+        run: node e2e/beginner.mjs 2>&1 | tee evidence/beginner.log
+        env:
+          LIVE_URL: http://127.0.0.1:4173
+      - name: Existing complete interaction regression
+        id: complete
+        if: ${{ !cancelled() && steps.serve.outcome == 'success' }}
+        run: node e2e/complete.mjs 2>&1 | tee evidence/complete.log
+        env:
+          LIVE_URL: http://127.0.0.1:4173
+      - name: True offline regression
+        id: offline
+        if: ${{ !cancelled() && steps.serve.outcome == 'success' }}
+        run: node e2e/offline.mjs 2>&1 | tee evidence/offline.log
+        env:
+          LIVE_URL: http://127.0.0.1:4173
+          PREVIEW_PID_FILE: /tmp/vfa-preview.pid
+      - name: Package review evidence without modifying source
+        if: ${{ !cancelled() }}
+        env:
+          TYPECHECK_RESULT: ${{ steps.types.outcome }}
+          BUILD_RESULT: ${{ steps.build.outcome }}
+          FIRST_USE_RESULT: ${{ steps.firstuse.outcome }}
+          BEGINNER_RESULT: ${{ steps.beginner.outcome }}
+          COMPLETE_RESULT: ${{ steps.complete.outcome }}
+          OFFLINE_RESULT: ${{ steps.offline.outcome }}
+        run: |
+          mkdir -p evidence
+          git diff --exit-code HEAD
+          git rev-parse HEAD > evidence/source-commit.txt
+          git archive --format=zip HEAD > evidence/vfa-human-first-source.zip
+          if test -d dist; then zip -qr evidence/vfa-human-first-built.zip dist; fi
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const report = {
+            sourceCommit: readFileSync('evidence/source-commit.txt', 'utf8').trim(),
+            workflowRunId: process.env.GITHUB_RUN_ID,
+            gates: {
+              typecheck: process.env.TYPECHECK_RESULT,
+              productionBuild: process.env.BUILD_RESULT,
+              firstUseAutomation: process.env.FIRST_USE_RESULT,
+              beginnerRegression: process.env.BEGINNER_RESULT,
+              completeRegression: process.env.COMPLETE_RESULT,
+              trueOffline: process.env.OFFLINE_RESULT
+            },
+            humanUsability: 'NOT TESTED: requires real first-time users',
+            liveAI: 'NOT TESTED: first-use suite uses mocked responses',
+            previewDeployment: 'NOT CREATED by this workflow',
+            productionRelease: 'NOT RELEASED by this workflow'
+          };
+          writeFileSync('evidence/gate-results.json', JSON.stringify(report, null, 2));
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: vfa-human-first-review
+          path: evidence/
+          retention-days: 14

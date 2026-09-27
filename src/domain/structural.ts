@@ -1,3 +1,4 @@
+import { nextItemPosition } from './starter';
 import type {
   EpistemicState,
   Frame,
@@ -138,7 +139,10 @@ export function applyProposal(framework: FrameworkDocument, proposal: Proposal):
   }
   const stamp = Date.now();
   const createdAt = new Date().toISOString();
-  const addedFrames = proposal.additions.map((item, index): Frame => ({
+  const addedFrames: Frame[] = [];
+  proposal.additions.forEach((item, index) => {
+    const position = nextItemPosition({ ...framework, frames: [...framework.frames, ...addedFrames] }, anchor.x + 310, Math.max(64, anchor.y));
+    addedFrames.push({
     id: `frame-${stamp}-${index}`,
     kind: 'asset',
     role: item.role ?? 'concept',
@@ -146,14 +150,15 @@ export function applyProposal(framework: FrameworkDocument, proposal: Proposal):
     provenance: { origin: 'model', createdAt },
     title: item.title,
     operation: 'DETERMINISTIC',
-    x: anchor.x + 310,
-    y: anchor.y + (index - (proposal.additions.length - 1) / 2) * 150,
+    x: position.x,
+    y: position.y,
     inputs: [],
     outputs: [{ id: 'out', name: 'value', type: 'any' }],
     body: item.body ?? '',
     value: item.body || item.title,
     parentId: proposal.operation === 'expand' ? anchor.id : undefined
-  }));
+    });
+  });
   const addedConnections = addedFrames.map((frame, index) => ({
     id: `semantic-${stamp}-${index}`,
     fromFrame: anchor.id,
