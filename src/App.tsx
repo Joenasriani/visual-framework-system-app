@@ -954,13 +954,24 @@ export default function App() {
       if (!layerDragRef.current) return;
       onLayerHeaderPointerUp(event as unknown as React.PointerEvent<HTMLDivElement>);
     };
+    const onMouseUp = (event: MouseEvent) => {
+      const drag = layerDragRef.current;
+      if (!drag) return;
+      onLayerHeaderPointerUp({
+        pointerId: drag.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY
+      } as unknown as React.PointerEvent<HTMLDivElement>);
+    };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
+    window.addEventListener('mouseup', onMouseUp);
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('mouseup', onMouseUp);
     };
   }, [onLayerHeaderPointerMove, onLayerHeaderPointerUp]);
 
