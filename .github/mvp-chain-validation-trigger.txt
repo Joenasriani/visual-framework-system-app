@@ -1,0 +1,2 @@
+VFA MVP Chain constructor validation
+Base main commit: bd84e4d4f4798368fe03d0ca49c8028ab9c9df8f
