@@ -856,7 +856,6 @@ export default function App() {
     setSelectedFrameIds([]);
     setSelectedConnectionId(null);
     playGraphClick('detach');
-    event.currentTarget.setPointerCapture(event.pointerId);
   }, [scale]);
 
   const onLayerHeaderPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
