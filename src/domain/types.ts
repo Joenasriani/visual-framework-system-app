@@ -47,6 +47,8 @@ export interface Provenance {
   source?: string;
   runId?: string;
   frameId?: string;
+  modelProvider?: string;
+  modelId?: string;
 }
 
 export interface Port {
@@ -146,6 +148,8 @@ export interface Proposal {
   summary: string;
   additions: ProposedFrame[];
   sourceRunId?: string;
+  modelProvider?: string;
+  modelId?: string;
 }
 
 export interface TransformationRecord {
