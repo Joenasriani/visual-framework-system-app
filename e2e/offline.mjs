@@ -122,6 +122,7 @@ try {
   }
 
   await page.locator('[data-frame="instruction-1"]').click({ position: { x: 65, y: 28 } });
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.getByRole('button', { name: 'Run This Item', exact: true }).click();
   await page.getByText('STOPPED', { exact: true }).first().waitFor({ timeout: 8000 });
 

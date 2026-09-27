@@ -1796,6 +1796,20 @@ export default function App() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        target.blur?.();
+        setSelectedFrameIds([]);
+        setSelectedConnectionId(null);
+        setSelectedLayerId(null);
+        wireRef.current = null;
+        setWire(null);
+        setTapConnect(null);
+        setRelationshipPickMode(false);
+        setPanelOpen(false);
+        setStatus(current => current === 'RUNNING' || current === 'THINKING' ? current : 'READY');
+        return;
+      }
       if (target.matches('input,textarea,select')) return;
       const command = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
@@ -1814,16 +1828,6 @@ export default function App() {
         if (selectedConnectionId) removeConnection(selectedConnectionId);
         else if (selectedLayerId) deleteLayer(selectedLayerId);
         else deleteSelection();
-      }
-      if (event.key === 'Escape') {
-        setSelectedFrameIds([]);
-        setSelectedConnectionId(null);
-        setSelectedLayerId(null);
-        wireRef.current = null;
-        setWire(null);
-        setRelationshipPickMode(false);
-        setPanelOpen(false);
-        setStatus('READY');
       }
     };
     window.addEventListener('keydown', onKey);
