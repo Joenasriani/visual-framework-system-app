@@ -1,6 +1,8 @@
 # Visual Framework
 
-MVP baseline: ACCEPTED on September 15, 2026.\n\nCurrent status: FINAL MVP 1.0 COMPLETION PASS — beginner-first usability and runtime hardening.
+MVP baseline: ACCEPTED on September 15, 2026.
+
+Current status: FINAL MVP 1.0 COMPLETION PASS — beginner-first usability and runtime hardening.
 
 Visual Framework helps people put ideas on a canvas, connect them, look at them in different ways, and run simple thinking steps while keeping the structure editable and visible.
 
