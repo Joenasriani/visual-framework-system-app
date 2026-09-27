@@ -22,17 +22,7 @@ async function drag(from, to) {
 
 async function addElement(label) {
   await page.getByRole('button', { name: /Library/ }).first().click();
-  await page.getByRole('button', { name: new RegExp(`^${label.replace(/[.*+?^$\{\}()|[\]\\]/g, '\\async function drag(from, to) {
-  const a = await from.boundingBox();
-  const b = await to.boundingBox();
-  assert(a && b, 'Connection ports not measurable');
-  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 });
-  await page.mouse.up();
-  await sleep(120);
-}
-')}\\s*·`) }).first().click();
+  await page.getByRole('button', { name: new RegExp('^' + label + '\\s*·') }).first().click();
   await page.keyboard.press('Escape');
   await sleep(70);
 }
