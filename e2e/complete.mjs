@@ -247,23 +247,23 @@ try {
   await page.locator('[data-frame="instruction-1"]').click({ modifiers: ['Shift'], position: { x: 65, y: 28 } });
   const sem0 = await page.locator('.connection-group.semantic').count();
   await page.locator('.relation-select').selectOption('supports');
-  await page.getByRole('button', { name: 'Relate', exact: true }).click();
+  await page.getByRole('button', { name: 'Connect', exact: true }).click();
   assert(await page.locator('.connection-group.semantic').count() === sem0 + 1, 'Semantic relationship failed');
   await page.keyboard.press('Control+z');
   assert(await page.locator('.connection-group.semantic').count() === sem0, 'Undo semantic relationship failed');
   await page.keyboard.press('Control+Shift+z');
   assert(await page.locator('.connection-group.semantic').count() === sem0 + 1, 'Redo semantic relationship failed');
   await page.keyboard.press('Control+z');
-  await page.getByRole('button', { name: 'Contain selection in active Frame' }).click();
+  await page.getByRole('button', { name: 'Group selection inside active element' }).click();
   await page.locator('[data-frame="asset-1"] .frame-parent').waitFor();
   await page.keyboard.press('Control+z');
   await sleep(70);
   assert(await page.locator('[data-frame="asset-1"] .frame-parent').count() === 0, 'Undo hierarchy failed');
   await page.keyboard.press('Control+Shift+z');
   await page.locator('[data-frame="asset-1"] .frame-parent').waitFor();
-  await page.getByRole('button', { name: 'Collapse children' }).click();
+  await page.getByRole('button', { name: 'Hide contained elements' }).click();
   await sleep(80);
-  await page.getByRole('button', { name: 'Expand children' }).click();
+  await page.getByRole('button', { name: 'Show contained elements' }).click();
   await page.getByRole('button', { name: 'Reset', exact: true }).click();
 
   // Progressive Framework execution exposes intermediate completion states.
@@ -285,12 +285,12 @@ try {
   // Every structural operation creates a pending Proposal and leaves accepted graph unchanged until approval.
   await page.locator('[data-frame="asset-1"]').click({ position: { x: 65, y: 28 } });
   await page.locator('.scope-control select').selectOption('frame');
-  for (const operation of ['Expand', 'Reframe', 'Alternatives', 'Challenge', 'Find Missing', 'Assumptions', 'Contradictions', 'Compress']) {
+  for (const operation of ['Explore Further', 'Reframe', 'Explore Alternatives', 'Test Reasoning', 'Find Gaps', 'Find Assumptions', 'Find Conflicts', 'Condense']) {
     const before = await frameCount();
     await page.getByRole('button', { name: operation, exact: true }).click();
-    await page.getByRole('button', { name: 'Reject', exact: true }).waitFor({ timeout: 8000 });
+    await page.getByRole('button', { name: 'Dismiss', exact: true }).waitFor({ timeout: 8000 });
     assert(await frameCount() === before, `${operation} mutated graph before approval`);
-    await page.getByRole('button', { name: 'Reject', exact: true }).click();
+    await page.getByRole('button', { name: 'Dismiss', exact: true }).click();
     await sleep(50);
     assert(await frameCount() === before, `${operation} rejection mutated graph`);
   }
@@ -298,8 +298,8 @@ try {
   // Proposal acceptance is reversible.
   const accept0 = await frameCount();
   await page.getByRole('button', { name: 'Reframe', exact: true }).click();
-  await page.getByRole('button', { name: 'Accept Proposal', exact: true }).waitFor({ timeout: 8000 });
-  await page.getByRole('button', { name: 'Accept Proposal', exact: true }).click();
+  await page.getByRole('button', { name: 'Apply Changes', exact: true }).waitFor({ timeout: 8000 });
+  await page.getByRole('button', { name: 'Apply Changes', exact: true }).click();
   await page.getByText('QA reframe', { exact: true }).waitFor();
   assert(await frameCount() === accept0 + 1, 'Proposal acceptance failed');
   await page.keyboard.press('Control+z');
@@ -329,7 +329,7 @@ try {
   // Real Compress operation creates another Framework while preserving source.
   await page.locator('[data-frame="asset-1"]').click({ position: { x: 65, y: 28 } });
   await page.locator('.scope-control select').selectOption('framework');
-  await page.getByRole('button', { name: 'Compress', exact: true }).click();
+  await page.getByRole('button', { name: 'Condense', exact: true }).click();
   await page.getByRole('button', { name: 'Create Framework', exact: true }).waitFor({ timeout: 8000 });
   await page.getByRole('button', { name: 'Create Framework', exact: true }).click();
   await page.getByText('Compressed Core', { exact: true }).waitFor();
@@ -346,7 +346,7 @@ try {
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
   await page.getByText('Visual Framework', { exact: true }).first().waitFor({ timeout: 8000 });
   await page.locator('[data-frame="instruction-1"]').click({ position: { x: 65, y: 28 } });
-  await page.getByRole('button', { name: 'Run Frame', exact: true }).click();
+  await page.getByRole('button', { name: 'Run This Node', exact: true }).click();
   await page.getByText('STOPPED', { exact: true }).first().waitFor({ timeout: 8000 });
   await context.setOffline(false);
 
