@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 
-const URL = process.env.LIVE_URL || 'https://visual-framework-system.vercel.app';
+const URL = process.env.LIVE_URL || 'https://visual-framework-app.vercel.app';
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const page = await context.newPage();
@@ -63,8 +63,8 @@ try {
   const initialFrames = await countFrames();
   assert(initialFrames >= 4, `Expected at least 4 seed Frames, found ${initialFrames}`);
 
-  await page.getByRole('button', { name: /Data/ }).first().click();
-  assert(await countFrames() === initialFrames + 1, 'Adding a Data Frame failed');
+  await page.getByRole('button', { name: /Thought/ }).first().click();
+  assert(await countFrames() === initialFrames + 1, 'Adding an element failed');
 
   const newest = page.locator('.frame').last();
   await newest.click({ position: { x: 80, y: 30 } });
