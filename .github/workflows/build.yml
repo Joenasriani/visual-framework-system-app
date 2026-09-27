@@ -21,7 +21,8 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Start built app locally
         run: |
-          nohup npm run preview -- --host 127.0.0.1 --port 4173 >/tmp/vfa-preview.log 2>&1 &
+          nohup ./node_modules/.bin/vite preview --host 127.0.0.1 --port 4173 >/tmp/vfa-preview.log 2>&1 &
+          echo $! >/tmp/vfa-preview.pid
           for i in {1..30}; do
             if curl --fail --silent http://127.0.0.1:4173 >/dev/null; then
               exit 0
@@ -31,6 +32,14 @@ jobs:
           cat /tmp/vfa-preview.log
           exit 1
       - name: Run current-commit MVP acceptance
-        run: node e2e/complete.mjs
+        run: |
+          node e2e/beginner.mjs
+          node e2e/complete.mjs
         env:
           LIVE_URL: http://127.0.0.1:4173
+
+      - name: Run true offline PWA acceptance
+        run: node e2e/offline.mjs
+        env:
+          LIVE_URL: http://127.0.0.1:4173
+          PREVIEW_PID_FILE: /tmp/vfa-preview.pid

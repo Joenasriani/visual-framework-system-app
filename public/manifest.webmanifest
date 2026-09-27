@@ -1,7 +1,7 @@
 {
   "name": "Visual Framework",
   "short_name": "Framework",
-  "description": "Build, execute, inspect and reframe structured reasoning graphs with Frames, semantic relationships, evidence states and provenance.",
+  "description": "Put ideas on a canvas, connect them, explore different views, and run simple thinking steps while keeping the structure editable.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

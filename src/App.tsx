@@ -43,39 +43,71 @@ const KIND_LABELS: Record<FrameKind, string> = {
 };
 
 const ROLES: FrameRole[] = [
-  'concept','claim','question','assumption','evidence','constraint','variable','observation','perspective','cause','effect','decision','criterion','hypothesis','alternative','unknown','contradiction','transformation','evaluation','result','instruction'
+  'concept','question','observation','claim','assumption','evidence','hypothesis','alternative','result','instruction'
 ];
 const STATES: EpistemicState[] = [
-  'known','supported','verified','assumed','inferred','hypothesized','disputed','contradicted','unknown','unresolved','invalid'
+  'known','supported','assumed','hypothesized','contradicted','unknown','unresolved'
 ];
 const GOALS: FrameworkGoal[] = ['understand','explain','decide','invent','research','compare','challenge'];
+const GOAL_LABELS: Record<FrameworkGoal, string> = {
+  understand: 'Understand',
+  explain: 'Explain',
+  decide: 'Decide',
+  invent: 'Create',
+  research: 'Research',
+  compare: 'Compare',
+  challenge: 'Challenge'
+};
 const RELATIONSHIPS: RelationshipMeaning[] = [
-  'supports','challenges','contradicts','depends-on','causes','influences','constrains','explains','derives-from','evidence-for','assumes','questions','tests','validates','refines','reframes','alternative-to','contains','part-of'
+  'supports','contradicts','depends-on','causes','influences','part-of','alternative-to'
 ];
 const STRUCTURAL_OPERATIONS: Array<[StructuralOperation, string]> = [
-  ['expand','Explore Further'],
-  ['reframe','Reframe'],
-  ['alternatives','Explore Alternatives'],
-  ['challenge','Test Reasoning'],
-  ['find-missing','Find Gaps'],
+  ['expand','Add Detail'],
+  ['reframe','Look Another Way'],
+  ['alternatives','Find Alternatives'],
+  ['challenge','Challenge'],
+  ['find-missing',"What's Missing?"],
   ['identify-assumption','Find Assumptions'],
   ['find-contradiction','Find Conflicts'],
-  ['compress','Condense']
+  ['compress','Simplify']
 ];
 
 const ROLE_LABELS: Partial<Record<FrameRole, string>> = {
+  concept: 'Idea',
+  claim: 'Claim',
+  question: 'Question',
+  assumption: 'Assumption',
+  evidence: 'Evidence',
   constraint: 'Condition',
-  effect: 'Outcome',
-  alternative: 'Alternative Explanation',
+  variable: 'Factor',
+  observation: 'Observation',
+  perspective: 'Perspective',
+  cause: 'Cause',
+  effect: 'Effect',
+  decision: 'Decision',
+  criterion: 'Goal',
+  hypothesis: 'Possible Explanation',
+  alternative: 'Alternative',
+  unknown: 'Unknown',
   contradiction: 'Conflict',
-  transformation: 'Change Process',
-  evaluation: 'Assessment',
-  result: 'Finding',
-  instruction: 'Process'
+  transformation: 'Change',
+  evaluation: 'Check',
+  result: 'Result',
+  instruction: 'Instruction'
 };
 
 const STATE_LABELS: Partial<Record<EpistemicState, string>> = {
-  disputed: 'Mixed / Disputed'
+  known: 'Known',
+  supported: 'Has Support',
+  verified: 'Checked',
+  assumed: 'Assumption',
+  inferred: 'Reasoned',
+  hypothesized: 'Possible',
+  disputed: 'Mixed',
+  contradicted: 'Conflicted',
+  unknown: 'Unknown',
+  unresolved: 'Not Settled',
+  invalid: "Doesn't Fit"
 };
 
 interface ElementPreset {
@@ -90,6 +122,7 @@ interface ElementPreset {
 }
 
 const ELEMENT_PRESETS: ElementPreset[] = [
+  { id: 'idea', label: 'Idea', technical: 'Concept / proposition', category: 'Research & Reasoning', kind: 'asset', role: 'concept', glyph: '◇' },
   { id: 'thought', label: 'Thought', technical: 'Cognition / cognitive appraisal', category: 'Mind & Experience', kind: 'asset', role: 'concept', glyph: '◇' },
   { id: 'feeling', label: 'Feeling', technical: 'Affect / emotional state', category: 'Mind & Experience', kind: 'asset', role: 'variable', glyph: '≈' },
   { id: 'belief', label: 'Belief', technical: 'Belief / schema where applicable', category: 'Mind & Experience', kind: 'asset', role: 'concept', glyph: 'B' },
@@ -124,16 +157,16 @@ const ELEMENT_PRESETS: ElementPreset[] = [
   { id: 'observation', label: 'Observation', technical: 'Observation / recorded event', category: 'Research & Reasoning', kind: 'asset', role: 'observation', glyph: '○' },
   { id: 'claim', label: 'Claim', technical: 'Proposition / claim', category: 'Research & Reasoning', kind: 'asset', role: 'claim', glyph: 'C' },
   { id: 'evidence', label: 'Evidence', technical: 'Empirical evidence / observation / measurement', category: 'Research & Reasoning', kind: 'asset', role: 'evidence', glyph: '✓' },
-  { id: 'hypothesis', label: 'Hypothesis', technical: 'Hypothesis', category: 'Research & Reasoning', kind: 'asset', role: 'hypothesis', epistemicState: 'hypothesized', glyph: 'H' },
+  { id: 'hypothesis', label: 'Possible Explanation', technical: 'Hypothesis', category: 'Research & Reasoning', kind: 'asset', role: 'hypothesis', epistemicState: 'hypothesized', glyph: 'H' },
   { id: 'assumption', label: 'Assumption', technical: 'Assumption / premise', category: 'Research & Reasoning', kind: 'asset', role: 'assumption', epistemicState: 'assumed', glyph: 'A' },
   { id: 'mechanism', label: 'Mechanism', technical: 'Proposed mechanism', category: 'Research & Reasoning', kind: 'asset', role: 'cause', epistemicState: 'hypothesized', glyph: 'M' },
   { id: 'prediction', label: 'Prediction', technical: 'Testable prediction', category: 'Research & Reasoning', kind: 'asset', role: 'hypothesis', epistemicState: 'hypothesized', glyph: 'Pr' },
-  { id: 'alternative-explanation', label: 'Alternative Explanation', technical: 'Competing hypothesis / explanatory account', category: 'Research & Reasoning', kind: 'asset', role: 'alternative', epistemicState: 'hypothesized', glyph: 'Alt' },
+  { id: 'alternative-explanation', label: 'Another Explanation', technical: 'Competing hypothesis / explanatory account', category: 'Research & Reasoning', kind: 'asset', role: 'alternative', epistemicState: 'hypothesized', glyph: 'Alt' },
   { id: 'counterargument', label: 'Counterargument', technical: 'Counterargument / challenge', category: 'Research & Reasoning', kind: 'asset', role: 'contradiction', glyph: '↯' },
   { id: 'limit', label: 'Limit', technical: 'Boundary condition / applicability limit', category: 'Research & Reasoning', kind: 'asset', role: 'constraint', glyph: 'L' },
   { id: 'unknown', label: 'Unknown', technical: 'Unresolved information', category: 'Research & Reasoning', kind: 'asset', role: 'unknown', epistemicState: 'unresolved', glyph: '?' },
   { id: 'gap', label: 'Gap', technical: 'Evidential / reasoning gap', category: 'Research & Reasoning', kind: 'asset', role: 'unknown', epistemicState: 'unresolved', glyph: '□' },
-  { id: 'conclusion', label: 'Conclusion', technical: 'Conclusion / finding', category: 'Research & Reasoning', kind: 'asset', role: 'result', epistemicState: 'inferred', glyph: '∴' },
+  { id: 'conclusion', label: 'Result', technical: 'Conclusion / finding', category: 'Research & Reasoning', kind: 'asset', role: 'result', epistemicState: 'inferred', glyph: '∴' },
 
   { id: 'process', label: 'Process', technical: 'Executable process / transformation', category: 'Framework Tools', kind: 'instruction', role: 'instruction', epistemicState: 'known', glyph: '→' },
   { id: 'rule', label: 'Rule', technical: 'Deterministic or descriptive rule', category: 'Framework Tools', kind: 'expression', role: 'evaluation', epistemicState: 'known', glyph: 'ƒ' },
@@ -141,11 +174,27 @@ const ELEMENT_PRESETS: ElementPreset[] = [
   { id: 'run-result', label: 'Run Result', technical: 'Result produced by a framework run', category: 'Framework Tools', kind: 'output', role: 'result', epistemicState: 'inferred', glyph: '□' }
 ];
 
-const FEATURED_ELEMENT_IDS = ['thought', 'feeling', 'behavior', 'context', 'evidence'];
+const FEATURED_ELEMENT_IDS = ['idea', 'question', 'observation', 'assumption', 'evidence'];
 const FEATURED_ELEMENT_PRESETS = FEATURED_ELEMENT_IDS.map(id => ELEMENT_PRESETS.find(preset => preset.id === id)!).filter(Boolean);
+const BEGINNER_ELEMENT_IDS = new Set([
+  'idea','thought','feeling','belief','goal',
+  'trigger','behavior','context','outcome',
+  'person','group',
+  'question','observation','claim','evidence','assumption','hypothesis','alternative-explanation','conclusion',
+  'process','rule','test','run-result'
+]);
+const BEGINNER_ELEMENT_PRESETS = ELEMENT_PRESETS.filter(preset => BEGINNER_ELEMENT_IDS.has(preset.id));
 const ELEMENT_CATEGORIES: ElementPreset['category'][] = ['Mind & Experience', 'Behavior & Context', 'People & Society', 'Research & Reasoning', 'Framework Tools'];
+const ELEMENT_CATEGORY_LABELS: Record<ElementPreset['category'], string> = {
+  'Mind & Experience': 'Thoughts & Feelings',
+  'Behavior & Context': 'Actions & Situations',
+  'People & Society': 'People & Groups',
+  'Research & Reasoning': 'Ideas, Questions & Evidence',
+  'Framework Tools': 'Tools'
+};
 
 const ELEMENT_EXPLANATIONS: Record<string, string> = {
+  idea: 'Something you want to explore or connect.',
   thought: 'What you think.',
   feeling: 'What you feel.',
   belief: 'What you hold to be true.',
@@ -194,7 +243,7 @@ const ELEMENT_EXPLANATIONS: Record<string, string> = {
 };
 
 const presetForFrame = (frame: Frame) => ELEMENT_PRESETS.find(preset => preset.label.toLowerCase() === frame.title.trim().toLowerCase());
-const frameFormalTerm = (frame: Frame) => presetForFrame(frame)?.technical ?? roleLabel(frame.role ?? 'concept');
+const frameFormalTerm = (frame: Frame) => roleLabel(frame.role ?? 'concept');
 const framePlainExplanation = (frame: Frame) => {
   const preset = presetForFrame(frame);
   if (preset) return ELEMENT_EXPLANATIONS[preset.id] ?? 'A part of the current behavior or social situation.';
@@ -242,21 +291,33 @@ const RELATIONSHIP_PRESETS: RelationshipPreset[] = [
   { meaning: 'assumes', label: 'Assumes', technical: 'Assumption dependency', category: 'Evidence & Reasoning' },
   { meaning: 'questions', label: 'Questions', technical: 'Question / challenge relation', category: 'Evidence & Reasoning' },
 
-  { meaning: 'refines', label: 'Refines', technical: 'Refinement relation', category: 'Interpretation & Alternatives' },
-  { meaning: 'reframes', label: 'Reframes', technical: 'Interpretive reframing relation', category: 'Interpretation & Alternatives' },
-  { meaning: 'alternative-to', label: 'Alternative To', technical: 'Competing explanation / position', category: 'Interpretation & Alternatives' },
+  { meaning: 'refines', label: 'Adds Detail To', technical: 'Refinement relation', category: 'Interpretation & Alternatives' },
+  { meaning: 'reframes', label: 'Looks At Differently', technical: 'Interpretive reframing relation', category: 'Interpretation & Alternatives' },
+  { meaning: 'alternative-to', label: 'Another View Of', technical: 'Competing explanation / position', category: 'Interpretation & Alternatives' },
   { meaning: 'derives-from', label: 'Comes From', technical: 'Derivation / provenance relation', category: 'Interpretation & Alternatives' },
 
   { meaning: 'contains', label: 'Contains', technical: 'Containment relation', category: 'Structure' },
-  { meaning: 'part-of', label: 'Part Of', technical: 'Part-whole relation', category: 'Structure' }
+  { meaning: 'part-of', label: 'Is Part Of', technical: 'Part-whole relation', category: 'Structure' }
 ];
 
+const BEGINNER_RELATIONSHIP_MEANINGS = new Set<RelationshipMeaning>([
+  'influences','causes','depends-on',
+  'supports','evidence-for','challenges','contradicts',
+  'alternative-to','contains','part-of'
+]);
+const BEGINNER_RELATIONSHIP_PRESETS = RELATIONSHIP_PRESETS.filter(preset => BEGINNER_RELATIONSHIP_MEANINGS.has(preset.meaning));
 const RELATIONSHIP_CATEGORIES: RelationshipPreset['category'][] = [
   'Influence & Explanation',
   'Evidence & Reasoning',
   'Interpretation & Alternatives',
   'Structure'
 ];
+const RELATIONSHIP_CATEGORY_LABELS: Record<RelationshipPreset['category'], string> = {
+  'Influence & Explanation': 'How Things Affect Each Other',
+  'Evidence & Reasoning': 'Support Or Challenge',
+  'Interpretation & Alternatives': 'Other Ways To See It',
+  'Structure': 'Groups And Parts'
+};
 
 const RELATIONSHIP_LABELS: Partial<Record<RelationshipMeaning, string>> = Object.fromEntries(
   RELATIONSHIP_PRESETS.map(preset => [preset.meaning, preset.label])
@@ -638,7 +699,7 @@ export default function App() {
       updatedAt: new Date().toISOString(),
       version: (current.version ?? 1) + (record ? 1 : 0),
       layers: (current.layers ?? []).map(layer => layer.id === layerId ? { ...layer, ...patch } : layer)
-    }), { record, label: 'Edit Layer' });
+    }), { record, label: 'Edit Group' });
   }, [changeFramework]);
 
   const createLayer = useCallback(() => {
@@ -670,7 +731,7 @@ export default function App() {
       y = Math.max(16, centerY - height / 2);
     }
 
-    const layer: Layer = { id, name: `Layer ${count}`, x, y, width, height };
+    const layer: Layer = { id, name: `Group ${count}`, x, y, width, height };
     const ids = new Set(selected.map(frame => frame.id));
     changeFramework(current => ({
       ...current,
@@ -678,7 +739,7 @@ export default function App() {
       updatedAt: new Date().toISOString(),
       layers: [...(current.layers ?? []), layer],
       frames: current.frames.map(frame => ids.has(frame.id) ? { ...frame, layerId: id } : frame)
-    }), { label: selected.length ? 'Group Frames in Layer' : 'Create Layer' });
+    }), { label: selected.length ? 'Group Selected Items' : 'Create Group' });
     setSelectedFrameIds([]);
     setSelectedConnectionId(null);
     setSelectedLayerId(id);
@@ -694,7 +755,7 @@ export default function App() {
       layers: (current.layers ?? []).filter(layer => layer.id !== layerId),
       frames: current.frames.filter(frame => !ids.has(frame.id)),
       connections: current.connections.filter(connection => !ids.has(connection.fromFrame) && !ids.has(connection.toFrame))
-    }), { label: 'Delete Layer' });
+    }), { label: 'Delete Group' });
     setSelectedLayerId(null);
     setSelectedFrameIds([]);
     setSelectedConnectionId(null);
@@ -725,7 +786,7 @@ export default function App() {
       epistemicState: preset.epistemicState ?? 'unknown',
       inputs: preset.kind === 'asset' ? [{ id: 'in', name: 'stimulus', type: 'any' }] : base.inputs,
       outputs: preset.kind === 'asset' ? [{ id: 'out', name: 'response', type: 'any' }] : base.outputs,
-      value: preset.kind === 'asset' ? preset.technical : base.value,
+      value: preset.kind === 'asset' ? (ELEMENT_EXPLANATIONS[preset.id] ?? preset.label) : base.value,
       body: preset.kind === 'instruction' ? 'Describe the response or change.' : base.body
     };
     changeFramework(current => ({ ...current, version: (current.version ?? 1) + 1, updatedAt: new Date().toISOString(), frames: [...current.frames, frame] }), { label: `Add ${preset.label}` });
@@ -928,7 +989,7 @@ export default function App() {
     }
 
     if (drag.moved) {
-      recordHistory(drag.before, 'Move Layer');
+      recordHistory(drag.before, 'Move Group');
       changeFramework(current => ({
         ...current,
         layers: (current.layers ?? []).map(layer => layer.id === drag.layerId
@@ -940,7 +1001,7 @@ export default function App() {
             ? { ...frame, x: Math.max(8, start.x + drag.dx), y: Math.max(8, start.y + drag.dy) }
             : frame;
         })
-      }), { record: false, label: 'Move Layer' });
+      }), { record: false, label: 'Move Group' });
     }
     playGraphClick('connect');
   }, [changeFramework, recordHistory, scale]);
@@ -1033,7 +1094,7 @@ export default function App() {
     if (!resize || resize.pointerId !== event.pointerId) return;
     layerResizeRef.current = null;
     if (resize.moved) {
-      recordHistory(resize.before, 'Resize Layer');
+      recordHistory(resize.before, 'Resize Group');
       persist(frameworkRef.current, 0);
     }
   }, [persist, recordHistory]);
@@ -1671,7 +1732,7 @@ export default function App() {
       if (command && key === 'v') { event.preventDefault(); pasteSelection(); return; }
       if (command && key === 'd') { event.preventDefault(); duplicateSelection(); return; }
       if (command && key === 'r') { event.preventDefault(); void executeAll(); return; }
-      const presetIds: Record<string, string> = { '1': 'thought', '2': 'feeling', '3': 'behavior', '4': 'context', '5': 'evidence' };
+      const presetIds: Record<string, string> = { '1': 'idea', '2': 'question', '3': 'observation', '4': 'assumption', '5': 'evidence' };
       if (presetIds[event.key]) addElementPreset(presetIds[event.key]);
       if (event.key === 'Delete' || event.key === 'Backspace') {
         if (selectedConnectionId) removeConnection(selectedConnectionId);
@@ -1767,12 +1828,12 @@ export default function App() {
       <aside className="tool-rail" aria-label="Add to framework">
         <div className="tool-caption">ADD</div>
         {FEATURED_ELEMENT_PRESETS.map((preset, index) => (
-          <button key={preset.id} className="tool" title={preset.technical} onClick={() => addElementPreset(preset.id)}>
+          <button key={preset.id} className="tool" title={ELEMENT_EXPLANATIONS[preset.id] ?? preset.label} onClick={() => addElementPreset(preset.id)}>
             <span className="tool-glyph">{preset.glyph}</span><span className="tool-label">{preset.label}</span><span className="tool-key">{index + 1}</span>
           </button>
         ))}
-        <button className="tool compact" onClick={() => openPanel('library')} title="Open the Human Sciences Element Library">
-          <span className="tool-glyph">＋</span><span className="tool-label">Library</span>
+        <button className="tool compact" onClick={() => openPanel('library')} title="See more things you can add">
+          <span className="tool-glyph">＋</span><span className="tool-label">More items</span>
         </button>
         <div className="rail-divider" />
         <button className="tool compact" onClick={duplicateSelection} disabled={!selectedFrameIds.length}><span className="tool-glyph">⧉</span><span className="tool-label">Duplicate</span></button>
@@ -1786,7 +1847,7 @@ export default function App() {
               {frameworkList.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
               {!frameworkList.some(item => item.id === framework.id) && <option value={framework.id}>{framework.name}</option>}
             </select>
-            <span>{framework.frames.length} elements · {connectionCount} relationships · {layers.length} {layers.length === 1 ? 'layer' : 'layers'}</span>
+            <span>{framework.frames.length} items · {connectionCount} connections · {layers.length} {layers.length === 1 ? 'group' : 'groups'}</span>
             {selectedFrameIds.length > 1 && <b className="selection-count">{selectedFrameIds.length} selected</b>}
           </div>
           <div className="workspace-controls">
@@ -1795,23 +1856,23 @@ export default function App() {
                 {RELATIONSHIPS.map(item => <option key={item} value={item}>{relationshipLabel(item)}</option>)}
               </select>
               <button className="quiet-action" onClick={() => connectMeaning()}>Connect</button>
-              <button className="quiet-action" onClick={() => openPanel('relationships')}>Relationship Library</button>
+              <button className="quiet-action" onClick={() => openPanel('relationships')}>More connections</button>
             </>}
-            {selectedFrameIds.length !== 2 && <button className="quiet-action relationship-action" onClick={() => openPanel('relationships')}>Relationships</button>}
-            {selectedFrame && <button className="quiet-action inspect-action" onClick={() => openPanel('frame')}>Inspect</button>}
-            <button className="quiet-action layer-action" onClick={createLayer}>{selectedFrameIds.length ? 'Layer Selection' : 'New Layer'}</button>
-            {selectedLayer && <button className="quiet-action layer-delete-action" onClick={() => deleteLayer(selectedLayer.id)}>Delete Layer</button>}
+            {selectedFrameIds.length !== 2 && <button className="quiet-action relationship-action" onClick={() => openPanel('relationships')}>Connections</button>}
+            {selectedFrame && <button className="quiet-action inspect-action" onClick={() => openPanel('frame')}>Edit</button>}
+            <button className="quiet-action layer-action" onClick={createLayer}>{selectedFrameIds.length ? 'Group Selected' : 'New Group'}</button>
+            {selectedLayer && <button className="quiet-action layer-delete-action" onClick={() => deleteLayer(selectedLayer.id)}>Delete Group</button>}
             <button className="quiet-action fit-action" onClick={fitView}>Fit</button>
             <div className="zoom"><button onClick={() => setScale(value => clamp(+(value - 0.1).toFixed(2), 0.35, 1.6))}>−</button><span>{Math.round(scale * 100)}%</span><button onClick={() => setScale(value => clamp(+(value + 0.1).toFixed(2), 0.35, 1.6))}>+</button></div>
           </div>
         </div>
 
         <div className="structure-bar">
-          <div className="scope-control"><span>SCOPE</span><select value={scopeMode} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setScopeMode(event.target.value as ScopeMode)}><option value="frame">Element</option><option value="selection">Selection</option><option value="branch">Path</option><option value="framework">Framework</option></select></div>
+          <div className="scope-control"><span>APPLY TO</span><select value={scopeMode} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setScopeMode(event.target.value as ScopeMode)}><option value="frame">This item</option><option value="selection">Selected items</option><option value="branch">This path</option><option value="framework">Everything</option></select></div>
           <div className="structure-actions">
             {STRUCTURAL_OPERATIONS.map(([operation, operationLabel]) => <button key={operation} onClick={() => void runStructuralOperation(operation)} disabled={status === 'THINKING' || status === 'RUNNING'}>{operationLabel}</button>)}
           </div>
-          <div className="goal-control"><span>GOAL</span><select value={framework.goal ?? 'understand'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => organizeGoal(event.target.value as FrameworkGoal)}>{GOALS.map(goal => <option key={goal} value={goal}>{label(goal)}</option>)}</select></div>
+          <div className="goal-control"><span>I WANT TO</span><select value={framework.goal ?? 'understand'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => organizeGoal(event.target.value as FrameworkGoal)}>{GOALS.map(goal => <option key={goal} value={goal}>{GOAL_LABELS[goal]}</option>)}</select></div>
         </div>
 
         <div
@@ -1824,7 +1885,7 @@ export default function App() {
           onWheel={onWheel}
         >
           <div className={`world${scale < 0.58 ? ' zoom-far' : ''}`} style={{ width: worldWidth, height: worldHeight, transform: `scale(${scale})` }}>
-            <div className="layers" aria-label="Node layers">
+            <div className="layers" aria-label="Groups">
               {layers.map(layer => {
                 const selected = selectedLayerId === layer.id;
                 return (
@@ -1849,12 +1910,12 @@ export default function App() {
                       <input
                         className="layer-name"
                         value={layer.name}
-                        aria-label="Layer name"
+                        aria-label="Group name"
                         onPointerDown={event => event.stopPropagation()}
                         onChange={event => updateLayer(layer.id, { name: event.target.value }, false)}
                       />
-                      <span className="layer-count">{framework.frames.filter(frame => frame.layerId === layer.id).length} nodes</span>
-                      <button className="layer-delete" type="button" title="Delete layer and its nodes" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); deleteLayer(layer.id); }}>×</button>
+                      <span className="layer-count">{framework.frames.filter(frame => frame.layerId === layer.id).length} items</span>
+                      <button className="layer-delete" type="button" title="Delete group and its items" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); deleteLayer(layer.id); }}>×</button>
                     </div>
                     {(['n','s','e','w','ne','nw','se','sw'] as LayerResizeState['edge'][]).map(edge => (
                       <div
@@ -1940,7 +2001,7 @@ export default function App() {
                     <div className="frame-title">{frame.title}</div>
                     <div className="frame-index">{frameFormalTerm(frame)}</div>
                     <div className="frame-body">{body}</div>
-                    <div className="frame-meta"><span>{meta}</span><span>{frame.operation === 'MODEL' ? 'EXTERNAL RESPONSE SYSTEM' : 'DIRECT'}</span></div>
+                    <div className="frame-meta"><span>{meta}</span><span>{frame.operation === 'MODEL' ? 'AI' : 'DIRECT'}</span></div>
                     {parent && <span className="frame-parent">inside {parent.title}</span>}
                     {children.length > 0 && <button className="frame-collapse" onClick={(event: React.MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); toggleCollapsed(frame.id); }}>{frame.collapsed ? `+${children.length}` : `−${children.length}`}</button>}
                     {frame.inputs.map((port, index) => (
@@ -1949,7 +2010,7 @@ export default function App() {
                         data-port="in"
                         data-frame-id={frame.id}
                         data-port-id={port.id}
-                        title="Connect into this element"
+                        title="Flow into this item"
                         className={`port port-in${wire || tapConnect ? (
                           (wire ?? tapConnect)!.sourceDirection !== 'in' &&
                           compatible((wire ?? tapConnect)!.outputType, port.type) &&
@@ -1969,7 +2030,7 @@ export default function App() {
                         data-port="out"
                         data-frame-id={frame.id}
                         data-port-id={port.id}
-                        title="Connect from this element"
+                        title="Start a flow from this item"
                         className={`port port-out${tapConnect?.fromFrame === frame.id && tapConnect.fromPort === port.id ? ' touch-source' : ''}${wire || tapConnect ? ' cannot-connect' : ''}${portFeedback?.frameId === frame.id && portFeedback.portId === port.id ? ` feedback-${portFeedback.kind}` : ''}`}
                         style={{ top: 54 + index * 22 }}
                         onPointerDown={(event: React.PointerEvent<HTMLButtonElement>) => startWire(event, frame, port, index)}
@@ -1985,7 +2046,7 @@ export default function App() {
                 <circle className={`wire-tip ${wire.previewState ?? 'neutral'}`} cx={wire.x2} cy={wire.y2} r="5" />
               </svg>
             )}
-            <div className="canvas-hint"><span>Drag space to move</span><i /><span>Drag ports to connect</span><i /><span>Drag a connected input to detach</span><i /><span>Ctrl scroll zooms</span></div>
+            <div className="canvas-hint"><span>Drag empty space to move</span><i /><span>Drag dots to create a flow</span><i /><span>Drag a connected dot away to disconnect</span><i /><span>Ctrl scroll to zoom</span></div>
           </div>
         </div>
       </section>
@@ -2043,7 +2104,7 @@ export default function App() {
 
       {selectedConnection && (
         <div className="connection-actions">
-          <span>{selectedConnection.kind === 'semantic' ? relationshipLabel(selectedConnection.meaning ?? 'depends-on') : 'Response Flow'}</span>
+          <span>{selectedConnection.kind === 'semantic' ? relationshipLabel(selectedConnection.meaning ?? 'depends-on') : 'Flow'}</span>
           <button onClick={() => removeConnection(selectedConnection.id)}>Disconnect</button>
         </div>
       )}
@@ -2066,7 +2127,7 @@ export default function App() {
             }
           }}
         ><span>↔</span><b>Relate</b></button>
-        <button onClick={() => selectedFrame && openPanel('frame')} disabled={!selectedFrame}><span>◎</span><b>Inspect</b></button>
+        <button onClick={() => selectedFrame && openPanel('frame')} disabled={!selectedFrame}><span>◎</span><b>Edit</b></button>
         <button onClick={() => openPanel('framework')}><span>•••</span><b>More</b></button>
       </nav>
 
@@ -2081,46 +2142,42 @@ function RelationshipLibraryInspector({ selectedCount, onConnect, onClose }: {
   onClose: () => void;
 }) {
   return <>
-    <div className="inspector-head"><div><span>RELATIONSHIP LIBRARY</span><strong>Human Sciences</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
+    <div className="inspector-head"><div><span>CONNECTIONS</span><strong>How are these related?</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
     <p className="proposal-summary">
-      Choose what the connection means. Select exactly two elements to create a relationship from the first selected element to the second.
+      Select two items, then choose what the first one means to the second.
     </p>
-    {selectedCount !== 2 && <p className="empty-copy">Select exactly two elements to connect them. You can still inspect the relationship vocabulary below.</p>}
+    {selectedCount !== 2 && <p className="empty-copy">Select exactly two items first. You can still look through the connection choices below.</p>}
     {RELATIONSHIP_CATEGORIES.map(category => (
       <div className="order-block" key={category}>
-        <span>{category}</span>
+        <span>{RELATIONSHIP_CATEGORY_LABELS[category]}</span>
         <div className="order-list">
-          {RELATIONSHIP_PRESETS.filter(preset => preset.category === category).map(preset => (
+          {BEGINNER_RELATIONSHIP_PRESETS.filter(preset => preset.category === category).map(preset => (
             <button
               key={preset.meaning}
-              title={preset.technical}
+              title={preset.label}
               disabled={selectedCount !== 2}
               onClick={() => onConnect(preset.meaning)}
             >
-              {preset.label} · {preset.technical}
+              {preset.label}
             </button>
           ))}
         </div>
       </div>
     ))}
-    <div className="hierarchy-block">
-      <span>Scientific precision</span>
-      <p>Moderation, mediation, reinforcement, temporal precedence, priming, diffusion, contagion, mobilization and similar mechanisms are not collapsed into these relationships. They should be added only when VFA has distinct underlying relationship types for them.</p>
-    </div>
   </>;
 }
 
 function ElementLibraryInspector({ onAdd, onClose }: { onAdd: (presetId: string) => void; onClose: () => void }) {
   return <>
-    <div className="inspector-head"><div><span>ELEMENT LIBRARY</span><strong>Human Sciences</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
-    <p className="proposal-summary">Choose what the element represents. The plain-language label comes first; the professional term follows it. These are presets over the existing VFA graph, not new engine types.</p>
+    <div className="inspector-head"><div><span>ADD SOMETHING</span><strong>Choose an item</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
+    <p className="proposal-summary">Choose the kind of thing you want to put on the canvas. You can rename it after adding it.</p>
     {ELEMENT_CATEGORIES.map(category => (
       <div className="order-block" key={category}>
-        <span>{category}</span>
+        <span>{ELEMENT_CATEGORY_LABELS[category]}</span>
         <div className="order-list">
-          {ELEMENT_PRESETS.filter(preset => preset.category === category).map(preset => (
-            <button key={preset.id} title={preset.technical} onClick={() => onAdd(preset.id)}>
-              {preset.label} · {preset.technical}
+          {BEGINNER_ELEMENT_PRESETS.filter(preset => preset.category === category).map(preset => (
+            <button key={preset.id} title={ELEMENT_EXPLANATIONS[preset.id] ?? preset.label} onClick={() => onAdd(preset.id)}>
+              {preset.label} · {ELEMENT_EXPLANATIONS[preset.id] ?? ''}
             </button>
           ))}
         </div>
@@ -2142,24 +2199,26 @@ function FrameInspector({ frame, step, selectedCount, childCount, onClose, onCha
   onRelease: () => void;
   onToggleCollapse: () => void;
 }) {
-  const bodyLabel = { asset: 'Content', instruction: 'Instruction', expression: 'Rule', check: 'Test', output: 'Finding' }[frame.kind];
+  const bodyLabel = { asset: 'Content', instruction: 'Instruction', expression: 'Rule', check: 'Check', output: 'Result' }[frame.kind];
+  const roleOptions: FrameRole[] = [...new Set<FrameRole>([frame.role ?? 'concept', ...ROLES])];
+  const stateOptions: EpistemicState[] = [...new Set<EpistemicState>([frame.epistemicState ?? 'unknown', ...STATES])];
   return <>
-    <div className="inspector-head"><div><span>ELEMENT</span><strong>{frame.title}</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
+    <div className="inspector-head"><div><span>ITEM</span><strong>{frame.title}</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
     <label className="field"><span>Name</span><input value={frame.title} onChange={(event: React.ChangeEvent<HTMLInputElement>) => onChange({ title: event.target.value })} /></label>
     <div className="dual-field">
-      <label className="field"><span>Element Type</span><select value={frame.role ?? 'concept'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ role: event.target.value as FrameRole })}>{ROLES.map(role => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
-      <label className="field"><span>Status</span><select value={frame.epistemicState ?? 'unknown'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ epistemicState: event.target.value as EpistemicState })}>{STATES.map(state => <option key={state} value={state}>{stateLabel(state)}</option>)}</select></label>
+      <label className="field"><span>This is a</span><select value={frame.role ?? 'concept'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ role: event.target.value as FrameRole })}>{roleOptions.map(role => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
+      <label className="field"><span>Status</span><select value={frame.epistemicState ?? 'unknown'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ epistemicState: event.target.value as EpistemicState })}>{stateOptions.map(state => <option key={state} value={state}>{stateLabel(state)}</option>)}</select></label>
     </div>
     {frame.kind === 'instruction' && <div className="order-block"><span>Methods</span><div className="order-list">{FRAME_ORDERS.map(order => <button key={order.id} className={frame.orderPreset === order.id ? 'active' : ''} onClick={() => onChange({ title: order.title, body: order.prompt, operation: 'MODEL', orderPreset: order.id })}>{order.title}</button>)}</div></div>}
     {frame.kind !== 'output' && <label className="field"><span>{bodyLabel}</span><textarea value={String(frame.kind === 'asset' ? frame.value ?? '' : frame.body)} onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => frame.kind === 'asset' ? onChange({ value: event.target.value }) : onChange({ body: event.target.value, orderPreset: '' })} /></label>}
-    <div className="seg-field"><span>Response</span><div className="seg"><button className={frame.operation === 'DETERMINISTIC' ? 'active' : ''} onClick={() => onChange({ operation: 'DETERMINISTIC' })}>Direct</button><button className={frame.operation === 'MODEL' ? 'active' : ''} onClick={() => onChange({ operation: 'MODEL', body: frame.body || `Respond using ${frame.title} as the active perspective.` })}>External Response System</button></div></div>
+    <div className="seg-field"><span>How it works</span><div className="seg"><button className={frame.operation === 'DETERMINISTIC' ? 'active' : ''} onClick={() => onChange({ operation: 'DETERMINISTIC' })}>Use as written</button><button className={frame.operation === 'MODEL' ? 'active' : ''} onClick={() => onChange({ operation: 'MODEL', body: frame.body || `Respond using ${frame.title} as the active perspective.` })}>Ask AI</button></div></div>
     {frame.kind === 'asset' && frame.operation === 'MODEL' && <label className="field"><span>Instruction</span><textarea value={frame.body} onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => onChange({ body: event.target.value, orderPreset: '' })} /></label>}
     {frame.kind === 'expression' && <div className="seg-field"><span>Use As</span><div className="seg"><button className={frame.expressionClass === 'EXECUTABLE' ? 'active' : ''} onClick={() => onChange({ expressionClass: 'EXECUTABLE' })}>Active Rule</button><button className={frame.expressionClass === 'DESCRIPTIVE' ? 'active' : ''} onClick={() => onChange({ expressionClass: 'DESCRIPTIVE' })}>Descriptive Note</button></div></div>}
-    <div className="hierarchy-block"><span>Structure</span><p>{frame.parentId ? 'Inside another element.' : 'Top level element.'}{childCount ? ` Contains ${childCount}.` : ''}</p>{selectedCount > 1 && <button onClick={onContain}>Group selection inside active element</button>}{frame.parentId && <button onClick={onRelease}>Move out of group</button>}{childCount > 0 && <button onClick={onToggleCollapse}>{frame.collapsed ? 'Show contained elements' : 'Hide contained elements'}</button>}</div>
+    <div className="hierarchy-block"><span>Structure</span><p>{frame.parentId ? 'Inside another item.' : 'Top level item.'}{childCount ? ` Contains ${childCount}.` : ''}</p>{selectedCount > 1 && <button onClick={onContain}>Group selection inside active item</button>}{frame.parentId && <button onClick={onRelease}>Move out of group</button>}{childCount > 0 && <button onClick={onToggleCollapse}>{frame.collapsed ? 'Show contained items' : 'Hide contained items'}</button>}</div>
     <div className="io-block"><span>Relationships</span>{[...frame.inputs.map(port => `Receives · ${port.name}`), ...frame.outputs.map(port => `Leads to · ${port.name}`)].map(text => <code key={text}>{text}</code>)}</div>
-    <div className="provenance-block"><span>Origin</span><b>{label(frame.provenance?.origin ?? 'user')}</b>{frame.provenance?.source && <small>{frame.provenance.source}</small>}</div>
-    <div className="trace-block"><span>Last run</span>{step ? <><b className={`trace-state trace-${step.status}`}>{step.status === 'ok' ? 'DONE' : 'ERROR'}</b><dl><dt>Received</dt><dd>{short(step.input, 180)}</dd><dt>Instruction</dt><dd>{frame.body || 'Direct response'}</dd><dt>Produced</dt><dd>{short(step.output, 180)}</dd><dt>Response</dt><dd>{step.executor === 'MODEL' ? 'External Response System' : 'Direct'}</dd>{step.error && <><dt>Error</dt><dd>{step.error}</dd></>}</dl></> : <em>Not run</em>}</div>
-    <button className="inspector-run" onClick={onRun}>Run This Node</button>
+    <div className="provenance-block"><span>Added by</span><b>{label(frame.provenance?.origin ?? 'user')}</b>{frame.provenance?.source && <small>{frame.provenance.source}</small>}</div>
+    <div className="trace-block"><span>Last run</span>{step ? <><b className={`trace-state trace-${step.status}`}>{step.status === 'ok' ? 'DONE' : 'ERROR'}</b><dl><dt>Input</dt><dd>{short(step.input, 180)}</dd><dt>Instruction</dt><dd>{frame.body || 'Direct response'}</dd><dt>Result</dt><dd>{short(step.output, 180)}</dd><dt>Method</dt><dd>{step.executor === 'MODEL' ? 'AI' : 'Direct'}</dd>{step.error && <><dt>Error</dt><dd>{step.error}</dd></>}</dl></> : <em>Not run</em>}</div>
+    <button className="inspector-run" onClick={onRun}>Run This Item</button>
     <button className="delete-btn" onClick={onDelete}>Delete</button>
   </>;
 }
@@ -2189,7 +2248,7 @@ function RunsInspector({ runs, activeRun, onSelect, onClose }: { runs: Framework
   return <>
     <div className="inspector-head"><div><span>FRAMEWORK</span><strong>Runs</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
     {!runs.length && <p className="empty-copy">No saved runs yet.</p>}
-    <div className="run-list">{runs.map(item => <button key={item.id} className={activeRun?.id === item.id ? 'active' : ''} onClick={() => onSelect(item)}><span>{item.status.toUpperCase()}</span><strong>{new Date(item.startedAt).toLocaleString()}</strong><small>{item.steps.length} elements</small></button>)}</div>
+    <div className="run-list">{runs.map(item => <button key={item.id} className={activeRun?.id === item.id ? 'active' : ''} onClick={() => onSelect(item)}><span>{item.status.toUpperCase()}</span><strong>{new Date(item.startedAt).toLocaleString()}</strong><small>{item.steps.length} items</small></button>)}</div>
     {activeRun && <div className="run-detail"><span>Selected run</span>{activeRun.steps.map(step => <article key={step.frameId}><b>{step.frameId}</b><small>{step.status.toUpperCase()} · {step.durationMs}ms</small><p>{short(step.output ?? step.error, 220)}</p></article>)}</div>}
   </>;
 }
@@ -2197,7 +2256,7 @@ function RunsInspector({ runs, activeRun, onSelect, onClose }: { runs: Framework
 function FrameworkInspector({ framework, pendingProposals, transformations, onOpenProposal, onOpenIssues, onOpenRuns }: { framework: FrameworkDocument; pendingProposals: number; transformations: number; onOpenProposal: () => void; onOpenIssues: () => void; onOpenRuns: () => void }) {
   return <div className="framework-inspector">
     <div className="inspector-head"><div><span>FRAMEWORK</span><strong>{framework.name}</strong></div></div>
-    <dl><dt>Goal</dt><dd>{label(framework.goal ?? 'understand')}</dd><dt>Version</dt><dd>{framework.version ?? 1}</dd><dt>Elements</dt><dd>{framework.frames.length}</dd><dt>Relationships</dt><dd>{framework.connections.length}</dd><dt>Changes</dt><dd>{transformations}</dd></dl>
+    <dl><dt>Goal</dt><dd>{GOAL_LABELS[framework.goal ?? 'understand']}</dd><dt>Version</dt><dd>{framework.version ?? 1}</dd><dt>Items</dt><dd>{framework.frames.length}</dd><dt>Connections</dt><dd>{framework.connections.length}</dd><dt>Changes</dt><dd>{transformations}</dd></dl>
     {pendingProposals > 0 && <button className="panel-action" onClick={onOpenProposal}>Review Suggested Change</button>}
     <button className="panel-action" onClick={onOpenIssues}>Inspect Checks</button>
     <button className="panel-action" onClick={onOpenRuns}>Inspect Runs</button>

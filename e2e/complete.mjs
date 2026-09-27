@@ -21,7 +21,7 @@ async function drag(from, to) {
 }
 
 async function addElement(label) {
-  await page.getByRole('button', { name: /Library/ }).first().click();
+  await page.getByRole('button', { name: /More items/ }).first().click();
   await page.getByRole('button', { name: new RegExp('^' + label + '\\s*·') }).first().click();
   await page.keyboard.press('Escape');
   await sleep(70);
@@ -55,9 +55,9 @@ try {
   await sleep(150);
 
   // All five runtime Frame kinds can be created through the current element vocabulary.
-  // Thought=asset, Process=instruction, Rule=expression, Test=check, Run Result=output.
+  // Idea=asset, Process=instruction, Rule=expression, Test=check, Run Result=output.
   const seed = await frameCount();
-  for (const name of ['Thought', 'Process', 'Rule', 'Test', 'Run Result']) {
+  for (const name of ['Idea', 'Process', 'Rule', 'Test', 'Run Result']) {
     await addElement(name);
   }
   assert(await frameCount() === seed + 5, 'All five Frame kinds were not created');
@@ -204,7 +204,7 @@ try {
   const nodes0 = await frameCount();
   await page.locator('[data-frame="asset-1"]').click({ position: { x: 65, y: 28 } });
   await page.locator('[data-frame="instruction-1"]').click({ modifiers: ['Shift'], position: { x: 65, y: 28 } });
-  await page.getByRole('button', { name: 'Layer Selection', exact: true }).click();
+  await page.getByRole('button', { name: 'Group Selected', exact: true }).click();
   await sleep(100);
   assert(await page.locator('.layer').count() === layers0 + 1, 'Layer was not created');
 
@@ -280,16 +280,16 @@ try {
   await page.keyboard.press('Control+Shift+z');
   assert(await page.locator('.connection-group.semantic').count() === sem0 + 1, 'Redo semantic relationship failed');
   await page.keyboard.press('Control+z');
-  await page.getByRole('button', { name: 'Group selection inside active element' }).click();
+  await page.getByRole('button', { name: 'Group selection inside active item' }).click();
   await page.locator('[data-frame="asset-1"] .frame-parent').waitFor();
   await page.keyboard.press('Control+z');
   await sleep(70);
   assert(await page.locator('[data-frame="asset-1"] .frame-parent').count() === 0, 'Undo hierarchy failed');
   await page.keyboard.press('Control+Shift+z');
   await page.locator('[data-frame="asset-1"] .frame-parent').waitFor();
-  await page.getByRole('button', { name: 'Hide contained elements' }).click();
+  await page.getByRole('button', { name: 'Hide contained items' }).click();
   await sleep(80);
-  await page.getByRole('button', { name: 'Show contained elements' }).click();
+  await page.getByRole('button', { name: 'Show contained items' }).click();
   await page.getByRole('button', { name: 'Reset', exact: true }).click();
 
   // Progressive Framework execution exposes intermediate completion states.
@@ -311,7 +311,7 @@ try {
   // Every structural operation creates a pending Proposal and leaves accepted graph unchanged until approval.
   await page.locator('[data-frame="asset-1"]').click({ position: { x: 65, y: 28 } });
   await page.locator('.scope-control select').selectOption('frame');
-  for (const operation of ['Explore Further', 'Reframe', 'Explore Alternatives', 'Test Reasoning', 'Find Gaps', 'Find Assumptions', 'Find Conflicts', 'Condense']) {
+  for (const operation of ['Add Detail', 'Look Another Way', 'Find Alternatives', 'Challenge', "What's Missing?", 'Find Assumptions', 'Find Conflicts', 'Simplify']) {
     const before = await frameCount();
     await page.getByRole('button', { name: operation, exact: true }).click();
     await page.getByRole('button', { name: 'Dismiss', exact: true }).waitFor({ timeout: 8000 });
@@ -323,7 +323,7 @@ try {
 
   // Proposal acceptance is reversible.
   const accept0 = await frameCount();
-  await page.getByRole('button', { name: 'Reframe', exact: true }).click();
+  await page.getByRole('button', { name: 'Look Another Way', exact: true }).click();
   await page.getByRole('button', { name: 'Apply Changes', exact: true }).waitFor({ timeout: 8000 });
   await page.getByRole('button', { name: 'Apply Changes', exact: true }).click();
   await page.getByText('QA reframe', { exact: true }).waitFor();
@@ -336,7 +336,7 @@ try {
   await page.keyboard.press('Control+z');
 
   // Linter issue navigates to its affected Frame.
-  await page.getByRole('button', { name: /Issues \d+/ }).click();
+  await page.getByRole('button', { name: /Checks \d+/ }).click();
   const issue = page.locator('.issue-list button').first();
   await issue.waitFor();
   await issue.click();
@@ -355,26 +355,14 @@ try {
   // Real Compress operation creates another Framework while preserving source.
   await page.locator('[data-frame="asset-1"]').click({ position: { x: 65, y: 28 } });
   await page.locator('.scope-control select').selectOption('framework');
-  await page.getByRole('button', { name: 'Condense', exact: true }).click();
+  await page.getByRole('button', { name: 'Simplify', exact: true }).click();
   await page.getByRole('button', { name: 'Create Framework', exact: true }).waitFor({ timeout: 8000 });
   await page.getByRole('button', { name: 'Create Framework', exact: true }).click();
   await page.getByText('Compressed Core', { exact: true }).waitFor();
   await page.waitForFunction(() => document.querySelectorAll('.framework-switch option').length >= 2);
   await page.locator('.framework-switch').selectOption('framework-main');
-  await page.getByText('Source', { exact: true }).waitFor();
-
-  // PWA reloads offline and an online Frame fails explicitly without network.
-  await page.getByRole('button', { name: 'Reset', exact: true }).click();
-  await page.evaluate(async () => { await navigator.serviceWorker.ready; });
-  if (!(await page.evaluate(() => Boolean(navigator.serviceWorker.controller)))) await page.reload({ waitUntil: 'networkidle' });
-  await page.unroute('**/api/model');
-  await context.setOffline(true);
-  await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
-  await page.getByText('Visual Framework', { exact: true }).first().waitFor({ timeout: 8000 });
-  await page.locator('[data-frame="instruction-1"]').click({ position: { x: 65, y: 28 } });
-  await page.getByRole('button', { name: 'Run This Node', exact: true }).click();
-  await page.getByText('STOPPED', { exact: true }).first().waitFor({ timeout: 8000 });
-  await context.setOffline(false);
+  await page.waitForFunction(() => document.querySelector('.framework-switch')?.value === 'framework-main');
+  await page.getByText('Start here', { exact: true }).waitFor();
 
   console.log('REMAINING MVP ACCEPTANCE PASSED');
 } finally {

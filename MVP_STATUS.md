@@ -1,10 +1,10 @@
 # Visual Framework MVP Status
 
-Status: ACCEPTED
+Status: BASELINE ACCEPTED / FINAL MVP 1.0 PRE-FREEZE
 
-Accepted: September 15, 2026
+Baseline accepted: September 15, 2026
 
-The desktop MVP has passed its implementation, build, production, and live interaction acceptance gates.
+The September 15 desktop baseline passed its implementation, build, production, and live interaction acceptance gates. It remains preserved as historical evidence. The current project is completing the final MVP 1.0 pass before freeze.
 
 ## Accepted MVP capability
 
@@ -75,6 +75,6 @@ Construct and connect → Expand → Reframe → Generate alternatives → Chall
 
 The canonical Framework remains preserved unless the user explicitly accepts a change. Important structural transformations remain inspectable and reversible.
 
-This closes the MVP scope.
+This closed the September 15 baseline scope. It does not override the later final MVP completion requirements.
 
-Future product work begins from `FRAMEWORK_TASKS.md` and must continue to pass the Visual Framework mission filter.
+The current beginner-facing contract is `MVP_BEGINNER_INTERACTION_CONTRACT.md`. The remaining final MVP completion work is controlled by `FRAMEWORK_TASKS.md`. MVP 1.0 should be marked FROZEN only after that completion pass and its acceptance tests pass.
