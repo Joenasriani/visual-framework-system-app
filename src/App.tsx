@@ -1718,7 +1718,7 @@ export default function App() {
       if (command && key === 'v') { event.preventDefault(); pasteSelection(); return; }
       if (command && key === 'd') { event.preventDefault(); duplicateSelection(); return; }
       if (command && key === 'r') { event.preventDefault(); void executeAll(); return; }
-      const presetIds: Record<string, string> = { '1': 'thought', '2': 'feeling', '3': 'behavior', '4': 'context', '5': 'evidence' };
+      const presetIds: Record<string, string> = { '1': 'idea', '2': 'question', '3': 'observation', '4': 'assumption', '5': 'evidence' };
       if (presetIds[event.key]) addElementPreset(presetIds[event.key]);
       if (event.key === 'Delete' || event.key === 'Backspace') {
         if (selectedConnectionId) removeConnection(selectedConnectionId);
@@ -1814,12 +1814,12 @@ export default function App() {
       <aside className="tool-rail" aria-label="Add to framework">
         <div className="tool-caption">ADD</div>
         {FEATURED_ELEMENT_PRESETS.map((preset, index) => (
-          <button key={preset.id} className="tool" title={preset.technical} onClick={() => addElementPreset(preset.id)}>
+          <button key={preset.id} className="tool" title={ELEMENT_EXPLANATIONS[preset.id] ?? preset.label} onClick={() => addElementPreset(preset.id)}>
             <span className="tool-glyph">{preset.glyph}</span><span className="tool-label">{preset.label}</span><span className="tool-key">{index + 1}</span>
           </button>
         ))}
-        <button className="tool compact" onClick={() => openPanel('library')} title="Open the Human Sciences Element Library">
-          <span className="tool-glyph">＋</span><span className="tool-label">Library</span>
+        <button className="tool compact" onClick={() => openPanel('library')} title="See more things you can add">
+          <span className="tool-glyph">＋</span><span className="tool-label">More items</span>
         </button>
         <div className="rail-divider" />
         <button className="tool compact" onClick={duplicateSelection} disabled={!selectedFrameIds.length}><span className="tool-glyph">⧉</span><span className="tool-label">Duplicate</span></button>
@@ -1833,7 +1833,7 @@ export default function App() {
               {frameworkList.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
               {!frameworkList.some(item => item.id === framework.id) && <option value={framework.id}>{framework.name}</option>}
             </select>
-            <span>{framework.frames.length} elements · {connectionCount} relationships · {layers.length} {layers.length === 1 ? 'layer' : 'layers'}</span>
+            <span>{framework.frames.length} items · {connectionCount} connections · {layers.length} {layers.length === 1 ? 'group' : 'groups'}</span>
             {selectedFrameIds.length > 1 && <b className="selection-count">{selectedFrameIds.length} selected</b>}
           </div>
           <div className="workspace-controls">
@@ -1842,23 +1842,23 @@ export default function App() {
                 {RELATIONSHIPS.map(item => <option key={item} value={item}>{relationshipLabel(item)}</option>)}
               </select>
               <button className="quiet-action" onClick={() => connectMeaning()}>Connect</button>
-              <button className="quiet-action" onClick={() => openPanel('relationships')}>Relationship Library</button>
+              <button className="quiet-action" onClick={() => openPanel('relationships')}>More connections</button>
             </>}
-            {selectedFrameIds.length !== 2 && <button className="quiet-action relationship-action" onClick={() => openPanel('relationships')}>Relationships</button>}
-            {selectedFrame && <button className="quiet-action inspect-action" onClick={() => openPanel('frame')}>Inspect</button>}
-            <button className="quiet-action layer-action" onClick={createLayer}>{selectedFrameIds.length ? 'Layer Selection' : 'New Layer'}</button>
-            {selectedLayer && <button className="quiet-action layer-delete-action" onClick={() => deleteLayer(selectedLayer.id)}>Delete Layer</button>}
+            {selectedFrameIds.length !== 2 && <button className="quiet-action relationship-action" onClick={() => openPanel('relationships')}>Connections</button>}
+            {selectedFrame && <button className="quiet-action inspect-action" onClick={() => openPanel('frame')}>Edit</button>}
+            <button className="quiet-action layer-action" onClick={createLayer}>{selectedFrameIds.length ? 'Group Selected' : 'New Group'}</button>
+            {selectedLayer && <button className="quiet-action layer-delete-action" onClick={() => deleteLayer(selectedLayer.id)}>Delete Group</button>}
             <button className="quiet-action fit-action" onClick={fitView}>Fit</button>
             <div className="zoom"><button onClick={() => setScale(value => clamp(+(value - 0.1).toFixed(2), 0.35, 1.6))}>−</button><span>{Math.round(scale * 100)}%</span><button onClick={() => setScale(value => clamp(+(value + 0.1).toFixed(2), 0.35, 1.6))}>+</button></div>
           </div>
         </div>
 
         <div className="structure-bar">
-          <div className="scope-control"><span>SCOPE</span><select value={scopeMode} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setScopeMode(event.target.value as ScopeMode)}><option value="frame">Element</option><option value="selection">Selection</option><option value="branch">Path</option><option value="framework">Framework</option></select></div>
+          <div className="scope-control"><span>APPLY TO</span><select value={scopeMode} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setScopeMode(event.target.value as ScopeMode)}><option value="frame">This item</option><option value="selection">Selected items</option><option value="branch">This path</option><option value="framework">Everything</option></select></div>
           <div className="structure-actions">
             {STRUCTURAL_OPERATIONS.map(([operation, operationLabel]) => <button key={operation} onClick={() => void runStructuralOperation(operation)} disabled={status === 'THINKING' || status === 'RUNNING'}>{operationLabel}</button>)}
           </div>
-          <div className="goal-control"><span>GOAL</span><select value={framework.goal ?? 'understand'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => organizeGoal(event.target.value as FrameworkGoal)}>{GOALS.map(goal => <option key={goal} value={goal}>{label(goal)}</option>)}</select></div>
+          <div className="goal-control"><span>I WANT TO</span><select value={framework.goal ?? 'understand'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => organizeGoal(event.target.value as FrameworkGoal)}>{GOALS.map(goal => <option key={goal} value={goal}>{GOAL_LABELS[goal]}</option>)}</select></div>
         </div>
 
         <div
@@ -1871,7 +1871,7 @@ export default function App() {
           onWheel={onWheel}
         >
           <div className={`world${scale < 0.58 ? ' zoom-far' : ''}`} style={{ width: worldWidth, height: worldHeight, transform: `scale(${scale})` }}>
-            <div className="layers" aria-label="Node layers">
+            <div className="layers" aria-label="Groups">
               {layers.map(layer => {
                 const selected = selectedLayerId === layer.id;
                 return (
@@ -1900,8 +1900,8 @@ export default function App() {
                         onPointerDown={event => event.stopPropagation()}
                         onChange={event => updateLayer(layer.id, { name: event.target.value }, false)}
                       />
-                      <span className="layer-count">{framework.frames.filter(frame => frame.layerId === layer.id).length} nodes</span>
-                      <button className="layer-delete" type="button" title="Delete layer and its nodes" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); deleteLayer(layer.id); }}>×</button>
+                      <span className="layer-count">{framework.frames.filter(frame => frame.layerId === layer.id).length} items</span>
+                      <button className="layer-delete" type="button" title="Delete group and its items" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); deleteLayer(layer.id); }}>×</button>
                     </div>
                     {(['n','s','e','w','ne','nw','se','sw'] as LayerResizeState['edge'][]).map(edge => (
                       <div
@@ -1987,7 +1987,7 @@ export default function App() {
                     <div className="frame-title">{frame.title}</div>
                     <div className="frame-index">{frameFormalTerm(frame)}</div>
                     <div className="frame-body">{body}</div>
-                    <div className="frame-meta"><span>{meta}</span><span>{frame.operation === 'MODEL' ? 'EXTERNAL RESPONSE SYSTEM' : 'DIRECT'}</span></div>
+                    <div className="frame-meta"><span>{meta}</span><span>{frame.operation === 'MODEL' ? 'AI' : 'DIRECT'}</span></div>
                     {parent && <span className="frame-parent">inside {parent.title}</span>}
                     {children.length > 0 && <button className="frame-collapse" onClick={(event: React.MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); toggleCollapsed(frame.id); }}>{frame.collapsed ? `+${children.length}` : `−${children.length}`}</button>}
                     {frame.inputs.map((port, index) => (
@@ -1996,7 +1996,7 @@ export default function App() {
                         data-port="in"
                         data-frame-id={frame.id}
                         data-port-id={port.id}
-                        title="Connect into this element"
+                        title="Flow into this item"
                         className={`port port-in${wire || tapConnect ? (
                           (wire ?? tapConnect)!.sourceDirection !== 'in' &&
                           compatible((wire ?? tapConnect)!.outputType, port.type) &&
@@ -2016,7 +2016,7 @@ export default function App() {
                         data-port="out"
                         data-frame-id={frame.id}
                         data-port-id={port.id}
-                        title="Connect from this element"
+                        title="Start a flow from this item"
                         className={`port port-out${tapConnect?.fromFrame === frame.id && tapConnect.fromPort === port.id ? ' touch-source' : ''}${wire || tapConnect ? ' cannot-connect' : ''}${portFeedback?.frameId === frame.id && portFeedback.portId === port.id ? ` feedback-${portFeedback.kind}` : ''}`}
                         style={{ top: 54 + index * 22 }}
                         onPointerDown={(event: React.PointerEvent<HTMLButtonElement>) => startWire(event, frame, port, index)}
@@ -2032,7 +2032,7 @@ export default function App() {
                 <circle className={`wire-tip ${wire.previewState ?? 'neutral'}`} cx={wire.x2} cy={wire.y2} r="5" />
               </svg>
             )}
-            <div className="canvas-hint"><span>Drag space to move</span><i /><span>Drag ports to connect</span><i /><span>Drag a connected input to detach</span><i /><span>Ctrl scroll zooms</span></div>
+            <div className="canvas-hint"><span>Drag empty space to move</span><i /><span>Drag dots to create a flow</span><i /><span>Drag a connected dot away to disconnect</span><i /><span>Ctrl scroll to zoom</span></div>
           </div>
         </div>
       </section>
@@ -2090,7 +2090,7 @@ export default function App() {
 
       {selectedConnection && (
         <div className="connection-actions">
-          <span>{selectedConnection.kind === 'semantic' ? relationshipLabel(selectedConnection.meaning ?? 'depends-on') : 'Response Flow'}</span>
+          <span>{selectedConnection.kind === 'semantic' ? relationshipLabel(selectedConnection.meaning ?? 'depends-on') : 'Flow'}</span>
           <button onClick={() => removeConnection(selectedConnection.id)}>Disconnect</button>
         </div>
       )}
@@ -2113,7 +2113,7 @@ export default function App() {
             }
           }}
         ><span>↔</span><b>Relate</b></button>
-        <button onClick={() => selectedFrame && openPanel('frame')} disabled={!selectedFrame}><span>◎</span><b>Inspect</b></button>
+        <button onClick={() => selectedFrame && openPanel('frame')} disabled={!selectedFrame}><span>◎</span><b>Edit</b></button>
         <button onClick={() => openPanel('framework')}><span>•••</span><b>More</b></button>
       </nav>
 
