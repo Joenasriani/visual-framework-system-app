@@ -356,7 +356,7 @@ function portCenter(frame: Frame, side: 'in' | 'out', index = 0) {
   return { x: side === 'out' ? frame.x + FRAME_WIDTH : frame.x, y: frame.y + 54 + index * 22 };
 }
 function semanticPoint(frame: Frame, side: 'from' | 'to') {
-  return { x: side === 'from' ? frame.x + FRAME_WIDTH : frame.x, y: frame.y + FRAME_HEIGHT / 2 };
+  return { x: frame.x + FRAME_WIDTH * (side === 'from' ? 0.75 : 0.25), y: frame.y + FRAME_HEIGHT }; 
 }
 
 interface CurveGeometry {
@@ -2043,14 +2043,16 @@ export default function App() {
                 const end = semantic ? semanticPoint(target, 'to') : portCenter(target, 'in', targetIndex);
                 const sourceMotion = cableMotion?.frameId === source.id ? cableMotion : undefined;
                 const targetMotion = cableMotion?.frameId === target.id ? cableMotion : undefined;
-                const geometry = curveGeometry(start, end, sourceMotion, targetMotion);
+                const geometry = semantic
+                  ? curveGeometry(start, end, { x: sourceMotion?.x ?? 0, y: 36 + (sourceMotion?.y ?? 0) }, { x: targetMotion?.x ?? 0, y: 36 + (targetMotion?.y ?? 0) })
+                  : curveGeometry(start, end, sourceMotion, targetMotion);
                 const selected = selectedConnectionId === connection.id;
                 const executing = !semantic && run?.activeFrameId === target.id;
                 const classes = ['connection-group', semantic ? 'semantic' : 'execution', selected ? 'selected' : '', newConnectionId === connection.id ? 'just-connected' : '', removingConnectionId === connection.id ? 'removing' : '', executing ? 'executing' : ''].filter(Boolean).join(' ');
                 return (
                   <g key={connection.id} className={classes}>
                     <path className="connection-halo" d={geometry.d} pathLength="1" />
-                    <path className="connection-main" d={geometry.d} pathLength="1" />
+                    <path className="connection-main" d={geometry.d} pathLength={semantic ? undefined : 1} />
                     <path
                       className="connection-hit"
                       data-connection-hit={connection.id}
@@ -2058,7 +2060,7 @@ export default function App() {
                       onPointerDown={(event: React.PointerEvent<SVGPathElement>) => event.stopPropagation()}
                       onClick={(event: React.MouseEvent<SVGPathElement>) => { event.stopPropagation(); setSelectedFrameIds([]); setSelectedLayerId(null); setSelectedConnectionId(connection.id); }}
                     />
-                    {selected && semantic && <text className="connection-label" x={geometry.mid.x} y={geometry.mid.y - 9} textAnchor="middle">{relationshipLabel(connection.meaning ?? 'depends-on')}</text>}
+                    {semantic && <text className="connection-label" x={geometry.mid.x} y={geometry.mid.y + 4} textAnchor="middle">{relationshipLabel(connection.meaning ?? 'depends-on')}</text>}
                     {selected && (
                       <g
                         className="connection-remove"

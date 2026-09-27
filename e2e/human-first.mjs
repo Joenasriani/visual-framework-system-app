@@ -73,6 +73,8 @@ try {
   await page.locator('.inspector').getByRole('button', { name: 'Supports', exact: true }).click();
   assert(await page.locator('.connection-group.execution').count() === 1, 'Meaning must not replace the execution cable');
   assert(await page.locator('.connection-group.semantic').count() === 1, 'Meaning must remain a separate relationship');
+  await page.locator('.connection-group.semantic .connection-label').filter({ hasText: 'Supports' }).waitFor();
+  assert(!(await page.locator('.connection-group.semantic').getAttribute('class')).includes('selected'), 'Relationship label test must not depend on selection');
   await page.getByRole('button', { name: 'Look Another Way', exact: true }).click();
   await page.getByRole('button', { name: 'Dismiss', exact: true }).waitFor();
   await count(page, 2);

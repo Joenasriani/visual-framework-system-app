@@ -35,3 +35,5 @@ html,body,#root{background:var(--bg);color:var(--ink)}
 @media(prefers-reduced-motion:reduce){.app-shell *,.app-shell *::before,.app-shell *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 .empty-canvas{position:absolute;left:50%;top:0;transform:translateX(-50%)}
+
+.connection-group.semantic .connection-main{stroke:#acb3bd;stroke-dasharray:4 5;stroke-width:1.4}.connection-group.semantic .connection-label{font-size:11px;fill:#d5dae1;stroke:#18191b;stroke-width:6px}
