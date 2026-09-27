@@ -4,13 +4,15 @@ on:
     branches: [mvp-human-first-2026-09-27]
     paths:
       - 'scripts/*human-first*.mjs'
+      - 'src/**'
+      - 'e2e/**'
       - '.github/workflows/human-first-review.yml'
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
   group: human-first-review
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   review:
     if: github.repository == 'Joenasriani/visual-framework-system-app' && github.ref == 'refs/heads/mvp-human-first-2026-09-27'
@@ -25,18 +27,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Apply exact-source integration on review branch only
+      - name: Apply guarded review repair when present
         run: |
-          if test -f scripts/apply-human-first-pass.mjs; then
-            node scripts/apply-human-first-pass.mjs
-            node scripts/refine-human-first-pass.mjs
-            rm scripts/apply-human-first-pass.mjs scripts/refine-human-first-pass.mjs
+          mkdir -p evidence/human-first
+          if test -f scripts/review-human-first.mjs; then
+            node scripts/review-human-first.mjs
+            rm scripts/review-human-first.mjs
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git add src e2e scripts
-            git commit -m 'Integrate human-first guidance, neutral shell and truthful results'
+            git commit -m 'Repair human-first review findings'
             git push origin HEAD:refs/heads/mvp-human-first-2026-09-27
           fi
+          git rev-parse HEAD > evidence/source-commit.txt
           echo "Tested source commit: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
       - run: npm install --no-audit --no-fund
       - run: npm run typecheck
@@ -44,8 +47,8 @@ jobs:
       - run: npm install --no-save playwright agent-browser
       - run: npx playwright install --with-deps chromium
       - name: Start the built source
+        id: serve
         run: |
-          mkdir -p evidence/human-first
           nohup ./node_modules/.bin/vite preview --host 127.0.0.1 --port 4173 >evidence/preview.log 2>&1 &
           echo $! >/tmp/vfa-preview.pid
           for i in {1..30}; do
@@ -66,17 +69,17 @@ jobs:
         env:
           LIVE_URL: http://127.0.0.1:4173
       - name: Existing beginner surface regression
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.serve.outcome == 'success' }}
         run: node e2e/beginner.mjs
         env:
           LIVE_URL: http://127.0.0.1:4173
       - name: Existing complete interaction regression
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.serve.outcome == 'success' }}
         run: node e2e/complete.mjs
         env:
           LIVE_URL: http://127.0.0.1:4173
       - name: True offline regression
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.serve.outcome == 'success' }}
         run: node e2e/offline.mjs
         env:
           LIVE_URL: http://127.0.0.1:4173
@@ -84,6 +87,7 @@ jobs:
       - name: Package review source and built app
         if: ${{ !cancelled() }}
         run: |
+          mkdir -p evidence
           git rev-parse HEAD > evidence/source-commit.txt
           git archive --format=zip HEAD > evidence/vfa-human-first-source.zip
           if test -d dist; then zip -qr evidence/vfa-human-first-built.zip dist; fi
