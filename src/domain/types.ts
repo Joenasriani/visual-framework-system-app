@@ -179,6 +179,7 @@ export interface RunStep {
   durationMs: number;
   executor?: OperationMode;
   provenance?: Provenance;
+  reusedFromRunId?: string;
 }
 
 export interface FrameworkRun {
