@@ -365,7 +365,8 @@ try {
   await page.getByText('Compressed Core', { exact: true }).waitFor();
   await page.waitForFunction(() => document.querySelectorAll('.framework-switch option').length >= 2);
   await page.locator('.framework-switch').selectOption('framework-main');
-  await page.getByText('Source', { exact: true }).waitFor();
+  await page.locator('[data-frame="asset-1"]').waitFor();
+  assert(await page.locator('.framework-switch').inputValue() === 'framework-main', 'Source Framework did not become active again');
 
   // Dependency-ready branches execute concurrently and a merge waits for every upstream result.
   await page.evaluate(async () => {
