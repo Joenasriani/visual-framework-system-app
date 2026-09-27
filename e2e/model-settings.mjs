@@ -51,7 +51,9 @@ try {
   await page.locator('[data-frame="example-question"]').waitFor();
   await page.locator('.run-button').click();
   await page.locator('.readable-result').waitFor();
-  await page.getByText(/Asked AI · openai · gpt-5\.6-luna/i).waitFor();
+  const modelDetail = page.locator('.readable-result details').filter({ hasText: 'Asked AI · openai · gpt-5.6-luna' }).first();
+  await modelDetail.locator('summary').click();
+  await modelDetail.getByText(/Asked AI · openai · gpt-5\.6-luna/i).waitFor();
   assert(requests.some(item => item.title !== 'Model connection test' && item.provider === 'openai'), 'Run did not use selected OpenAI settings');
 
   const stored = await page.evaluate(async () => {
