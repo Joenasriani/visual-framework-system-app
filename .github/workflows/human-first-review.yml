@@ -1,0 +1,95 @@
+name: Human-first MVP review
+on:
+  push:
+    branches: [mvp-human-first-2026-09-27]
+    paths:
+      - 'scripts/*human-first*.mjs'
+      - '.github/workflows/human-first-review.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: human-first-review
+  cancel-in-progress: false
+jobs:
+  review:
+    if: github.repository == 'Joenasriani/visual-framework-system-app' && github.ref == 'refs/heads/mvp-human-first-2026-09-27'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply exact-source integration on review branch only
+        run: |
+          if test -f scripts/apply-human-first-pass.mjs; then
+            node scripts/apply-human-first-pass.mjs
+            node scripts/refine-human-first-pass.mjs
+            rm scripts/apply-human-first-pass.mjs scripts/refine-human-first-pass.mjs
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add src e2e scripts
+            git commit -m 'Integrate human-first guidance, neutral shell and truthful results'
+            git push origin HEAD:refs/heads/mvp-human-first-2026-09-27
+          fi
+          echo "Tested source commit: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm install --no-save playwright agent-browser
+      - run: npx playwright install --with-deps chromium
+      - name: Start the built source
+        run: |
+          mkdir -p evidence/human-first
+          nohup ./node_modules/.bin/vite preview --host 127.0.0.1 --port 4173 >evidence/preview.log 2>&1 &
+          echo $! >/tmp/vfa-preview.pid
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173 >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat evidence/preview.log
+          exit 1
+      - name: Capture the actual first screen
+        continue-on-error: true
+        run: |
+          npx agent-browser open http://127.0.0.1:4173
+          npx agent-browser snapshot -i > evidence/first-screen.txt
+          npx agent-browser screenshot evidence/first-screen.png
+          npx agent-browser close
+      - name: First-use behavior and responsive evidence
+        run: node e2e/human-first.mjs
+        env:
+          LIVE_URL: http://127.0.0.1:4173
+      - name: Existing beginner surface regression
+        if: ${{ !cancelled() }}
+        run: node e2e/beginner.mjs
+        env:
+          LIVE_URL: http://127.0.0.1:4173
+      - name: Existing complete interaction regression
+        if: ${{ !cancelled() }}
+        run: node e2e/complete.mjs
+        env:
+          LIVE_URL: http://127.0.0.1:4173
+      - name: True offline regression
+        if: ${{ !cancelled() }}
+        run: node e2e/offline.mjs
+        env:
+          LIVE_URL: http://127.0.0.1:4173
+          PREVIEW_PID_FILE: /tmp/vfa-preview.pid
+      - name: Package review source and built app
+        if: ${{ !cancelled() }}
+        run: |
+          git rev-parse HEAD > evidence/source-commit.txt
+          git archive --format=zip HEAD > evidence/vfa-human-first-source.zip
+          if test -d dist; then zip -qr evidence/vfa-human-first-built.zip dist; fi
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: vfa-human-first-review
+          path: evidence/
+          retention-days: 14
