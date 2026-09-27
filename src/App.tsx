@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EmptyCanvas, FirstUseGuide, RunExplanation } from './ui/FirstUse';
+import { ModelSettingsInspector } from './ui/ModelSettings';
+import { providerSummary } from './model/settings';
 import { createEmptyFramework, createEverydayExample, nextItemPosition } from './domain/starter';
 import { compatible, runFramework, runSingleFrame, validateFramework } from './domain/engine';
 import { lintFramework } from './domain/linter';
@@ -455,7 +457,7 @@ interface ClipboardState {
   frames: Frame[];
   connections: FrameworkDocument['connections'];
 }
-type SideMode = 'frame' | 'issues' | 'runs' | 'proposal' | 'framework' | 'library' | 'relationships';
+type SideMode = 'frame' | 'issues' | 'runs' | 'proposal' | 'framework' | 'library' | 'relationships' | 'models';
 type ScopeMode = FrameworkScope['kind'];
 
 function playGraphClick(kind: 'connect' | 'detach') {
@@ -534,6 +536,7 @@ export default function App() {
   const [runs, setRuns] = useState<FrameworkRun[]>([]);
   const [status, setStatus] = useState('READY');
   const [showTools, setShowTools] = useState(false);
+  const [modelSettingsRevision, setModelSettingsRevision] = useState(0);
   const [actionError, setActionError] = useState<string | null>(null);
   const busyRef = useRef(false);
   const fittedExampleRef = useRef('');
@@ -1894,6 +1897,7 @@ export default function App() {
   const connectionCount = framework.connections.length;
   const proposalCount = framework.proposals?.filter(item => item.status === 'pending').length ?? 0;
   void historyTick;
+  void modelSettingsRevision;
 
   if (!loaded) return <div className="boot">Visual Framework</div>;
 
@@ -1911,6 +1915,7 @@ export default function App() {
           <button className="text-btn" onClick={() => void createWorkspace(false)} disabled={status === 'RUNNING' || status === 'THINKING'}>New map</button>
           <button className="text-btn" onClick={() => void createWorkspace(true)} disabled={status === 'RUNNING' || status === 'THINKING'}>Example</button>
           <button className="text-btn" aria-expanded={showTools} onClick={() => setShowTools(value => !value)}>{showTools ? 'Fewer tools' : 'More tools'}</button>
+          <button className="text-btn ai-settings-action" onClick={() => openPanel('models')} title={providerSummary()}>AI</button>
           <button className="run-button" onClick={() => void executeAll()} disabled={!framework.frames.length || status === 'RUNNING' || status === 'THINKING'}><span>Run</span><kbd>⌘R</kbd></button>
         </div>
       </header>
@@ -2154,7 +2159,9 @@ export default function App() {
 
       {panelOpen && <button className="panel-backdrop" aria-label="Close panel" onClick={closePanel} />}
       <aside className={`inspector${panelOpen ? ' panel-open' : ''}`}>
-        {sideMode === 'library' ? (
+        {sideMode === 'models' ? (
+          <ModelSettingsInspector onClose={() => { closePanel(); setSideMode(selectedFrame ? 'frame' : 'framework'); }} onChanged={() => setModelSettingsRevision(value => value + 1)} />
+        ) : sideMode === 'library' ? (
           <ElementLibraryInspector onAdd={addElementPreset} onClose={() => { closePanel(); setSideMode(selectedFrame ? 'frame' : 'framework'); }} />
         ) : sideMode === 'relationships' ? (
           <RelationshipLibraryInspector
@@ -2320,7 +2327,7 @@ function FrameInspector({ frame, step, selectedCount, childCount, onClose, onCha
     <div className="io-block"><span>Relationships</span>{[...frame.inputs.map(port => `Receives · ${port.name}`), ...frame.outputs.map(port => `Leads to · ${port.name}`)].map(text => <code key={text}>{text}</code>)}</div>
     <div className="provenance-block"><span>Added by</span><b>{label(frame.provenance?.origin ?? 'user')}</b>{frame.provenance?.source && <small>{frame.provenance.source}</small>}</div>
     </details>
-    <div className="trace-block"><span>Last run</span>{step ? <><b className={`trace-state trace-${step.status}`}>{step.status === 'ok' ? 'DONE' : 'ERROR'}</b><dl><dt>Input</dt><dd>{short(step.input, 180)}</dd><dt>Instruction</dt><dd>{frame.body || 'Direct response'}</dd><dt>Result</dt><dd>{short(step.output, 180)}</dd><dt>Method</dt><dd>{step.executor === 'MODEL' ? 'AI' : 'Direct'}</dd>{step.error && <><dt>Error</dt><dd>{step.error}</dd></>}</dl></> : <em>Not run</em>}</div>
+    <div className="trace-block"><span>Last run</span>{step ? <><b className={`trace-state trace-${step.status}`}>{step.status === 'ok' ? 'DONE' : 'ERROR'}</b><dl><dt>Input</dt><dd>{short(step.input, 180)}</dd><dt>Instruction</dt><dd>{frame.body || 'Direct response'}</dd><dt>Result</dt><dd>{short(step.output, 180)}</dd><dt>Method</dt><dd>{step.executor === 'MODEL' ? (step.provenance?.modelProvider ? `AI · ${label(step.provenance.modelProvider)}${step.provenance.modelId ? ` · ${step.provenance.modelId}` : ''}` : 'AI') : 'Direct'}</dd>{step.error && <><dt>Error</dt><dd>{step.error}</dd></>}</dl></> : <em>Not run</em>}</div>
     <button className="inspector-run" onClick={onRun}>Run This Item</button>
     <button className="delete-btn" onClick={onDelete}>Delete</button>
   </>;

@@ -93,7 +93,7 @@ export function RunExplanation({ run, framework }: { run: FrameworkRun; framewor
     <h3>What happened in each item</h3>
     {run.steps.map((step, index) => <details key={`${step.frameId}-${index}`} open={step.status === 'error'}>
       <summary>{index + 1}. {titles.get(step.frameId) ?? step.frameId} — {step.status === 'ok' ? 'Finished' : 'Stopped'}</summary>
-      <dl><dt>Input</dt><dd><pre>{displayValue(step.input)}</pre></dd><dt>Method</dt><dd>{step.executor === 'MODEL' ? 'Asked AI' : 'Used saved text or a rule'}</dd><dt>Result</dt><dd><pre>{displayValue(step.output)}</pre></dd>{step.error && <><dt>Why it stopped</dt><dd>{step.error}</dd></>}</dl>
+      <dl><dt>Input</dt><dd><pre>{displayValue(step.input)}</pre></dd><dt>Method</dt><dd>{step.executor === 'MODEL' ? (step.provenance?.modelProvider ? `Asked AI · ${step.provenance.modelProvider}${step.provenance.modelId ? ` · ${step.provenance.modelId}` : ''}` : 'Asked AI') : 'Used saved text or a rule'}</dd><dt>Result</dt><dd><pre>{displayValue(step.output)}</pre></dd>{step.error && <><dt>Why it stopped</dt><dd>{step.error}</dd></>}</dl>
     </details>)}
     <small>Item names refer to the current map. Inputs and results above are the saved values from this run.</small>
   </section>;

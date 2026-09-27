@@ -1,3 +1,4 @@
+import { modelRequestConfig } from '../model/settings';
 import { nextItemPosition } from './starter';
 import type {
   EpistemicState,
@@ -96,7 +97,7 @@ export async function requestStructuralProposal(
   const response = await fetch('/api/model', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: `Structural ${operation}`, instruction, input: scopeText(framework, scope) })
+    body: JSON.stringify({ title: `Structural ${operation}`, instruction, input: scopeText(framework, scope), ...modelRequestConfig() })
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data?.error || 'STRUCTURAL OPERATION FAILED');
@@ -113,7 +114,9 @@ export async function requestStructuralProposal(
     status: 'pending',
     createdAt: new Date().toISOString(),
     summary: typeof parsed?.summary === 'string' && parsed.summary.trim() ? parsed.summary.trim() : output.slice(0, 1200),
-    additions
+    additions,
+    modelProvider: typeof data?.provider === 'string' ? data.provider : undefined,
+    modelId: typeof data?.model === 'string' ? data.model : undefined
   };
 }
 
@@ -147,7 +150,7 @@ export function applyProposal(framework: FrameworkDocument, proposal: Proposal):
     kind: 'asset',
     role: item.role ?? 'concept',
     epistemicState: item.epistemicState ?? 'hypothesized',
-    provenance: { origin: 'model', createdAt },
+    provenance: { origin: 'model', createdAt, ...(proposal.modelProvider ? { modelProvider: proposal.modelProvider } : {}), ...(proposal.modelId ? { modelId: proposal.modelId } : {}) },
     title: item.title,
     operation: 'DETERMINISTIC',
     x: position.x,
@@ -167,7 +170,7 @@ export function applyProposal(framework: FrameworkDocument, proposal: Proposal):
     toPort: '',
     kind: 'semantic' as const,
     meaning: relationFor(proposal.operation, proposal.additions[index]?.relationshipToAnchor),
-    provenance: { origin: 'model' as const, createdAt }
+    provenance: { origin: 'model' as const, createdAt, ...(proposal.modelProvider ? { modelProvider: proposal.modelProvider } : {}), ...(proposal.modelId ? { modelId: proposal.modelId } : {}) }
   }));
   const before = framework.version ?? 1;
   const after = before + 1;
