@@ -1,4 +1,4 @@
-name: Build Visual Framework
+name: Build + Current MVP Acceptance
 
 on:
   push:
@@ -6,8 +6,9 @@ on:
   pull_request:
 
 jobs:
-  build:
+  build-and-mvp:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -16,3 +17,20 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run build
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - name: Start built app locally
+        run: |
+          nohup npm run preview -- --host 127.0.0.1 --port 4173 >/tmp/vfa-preview.log 2>&1 &
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173 >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/vfa-preview.log
+          exit 1
+      - name: Run current-commit MVP acceptance
+        run: node e2e/complete.mjs
+        env:
+          LIVE_URL: http://127.0.0.1:4173
