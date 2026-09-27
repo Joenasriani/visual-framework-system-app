@@ -1,4 +1,4 @@
-const CACHE = 'visual-framework-shell-v2';
+const CACHE = 'visual-framework-shell-v3';
 const CORE = ['/', '/manifest.webmanifest', '/icon.svg'];
 
 async function cacheCurrentShell() {
