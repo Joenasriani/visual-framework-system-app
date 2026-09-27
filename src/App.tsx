@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { compatible, runFramework, runSingleFrame, validateFramework } from './domain/engine';
+import { compatible, rerunAffectedFramework, runFramework, runSingleFrame, validateFramework } from './domain/engine';
 import { lintFramework } from './domain/linter';
 import { FRAME_ORDERS } from './domain/orders';
 import { createSeedFramework, FRAME_HEIGHT, FRAME_WIDTH } from './domain/seed';
@@ -468,6 +468,7 @@ export default function App() {
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const [portFeedback, setPortFeedback] = useState<{ frameId: string; portId: string; kind: 'connect' | 'detach' } | null>(null);
   const [run, setRun] = useState<FrameworkRun | null>(null);
+  const [dirtyExecutionFrameIds, setDirtyExecutionFrameIds] = useState<string[]>([]);
   const [runs, setRuns] = useState<FrameworkRun[]>([]);
   const [status, setStatus] = useState('READY');
   const [scale, setScale] = useState(1);
@@ -708,7 +709,11 @@ export default function App() {
       version: (current.version ?? 1) + (record ? 1 : 0),
       frames: current.frames.map(frame => frame.id === frameId ? { ...frame, ...patch } : frame)
     }), { record, label: 'Edit Frame' });
-    setRun(null);
+    const executionKeys = new Set<keyof Frame>(['title', 'operation', 'body', 'value', 'expressionClass', 'inputs', 'outputs']);
+    if (Object.keys(patch).some(key => executionKeys.has(key as keyof Frame))) {
+      setDirtyExecutionFrameIds(current => current.includes(frameId) ? current : [...current, frameId]);
+      setStatus('CHANGED');
+    }
   }, [changeFramework]);
 
   const addElementPreset = useCallback((presetId: string) => {
@@ -1581,16 +1586,32 @@ export default function App() {
 
   const executeAll = useCallback(async () => {
     setStatus('RUNNING');
+    const previousRun = run;
+    const canReuse = Boolean(
+      previousRun &&
+      previousRun.status === 'ok' &&
+      previousRun.frameworkId === frameworkRef.current.id &&
+      dirtyExecutionFrameIds.length
+    );
     const running: FrameworkRun = {
-      id: `run-${Date.now()}`, frameworkId: frameworkRef.current.id, status: 'running', startedAt: new Date().toISOString(), activeFrameId: null, activeFrameIds: [], steps: []
+      id: `run-${Date.now()}`,
+      frameworkId: frameworkRef.current.id,
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      activeFrameId: null,
+      activeFrameIds: [],
+      steps: canReuse ? previousRun?.steps ?? [] : []
     };
     setRun(running);
-    const final = await runFramework(frameworkRef.current, event => setRun(event.run));
+    const final = canReuse && previousRun
+      ? await rerunAffectedFramework(frameworkRef.current, dirtyExecutionFrameIds, previousRun, event => setRun(event.run))
+      : await runFramework(frameworkRef.current, event => setRun(event.run));
+    setDirtyExecutionFrameIds([]);
     setRun(final);
     setStatus(final.status === 'ok' ? 'PASSED' : 'STOPPED');
     await saveRun(final).catch(() => undefined);
     setRuns(await listRuns(frameworkRef.current.id).catch(() => []));
-  }, []);
+  }, [dirtyExecutionFrameIds, run]);
 
   const switchFramework = useCallback(async (id: string) => {
     if (id === frameworkRef.current.id) return;
@@ -1603,6 +1624,7 @@ export default function App() {
     setSelectedConnectionId(null);
     setSelectedLayerId(null);
     setRun(null);
+    setDirtyExecutionFrameIds([]);
     setScale(1);
     pastRef.current = [];
     futureRef.current = [];
@@ -1620,6 +1642,7 @@ export default function App() {
     setSelectedConnectionId(null);
     setSelectedLayerId(null);
     setRun(null);
+    setDirtyExecutionFrameIds([]);
     setScale(1);
     setCableMotion(null);
     setStatus('READY');
@@ -1923,7 +1946,7 @@ export default function App() {
                 const active = Boolean(run?.activeFrameIds?.includes(frame.id) || run?.activeFrameId === frame.id);
                 const selected = selectedFrameIds.includes(frame.id);
                 const body = active ? 'Responding…' : framePlainExplanation(frame);
-                const meta = active ? 'RESPONDING' : step?.status === 'error' ? 'STOPPED' : frame.epistemicState ? stateLabel(frame.epistemicState) : 'UNASSESSED';
+                const meta = active ? 'RESPONDING' : dirtyExecutionFrameIds.includes(frame.id) ? 'CHANGED' : step?.reusedFromRunId ? 'REUSED' : step?.status === 'error' ? 'STOPPED' : frame.epistemicState ? stateLabel(frame.epistemicState) : 'UNASSESSED';
                 const children = childrenByParent.get(frame.id) ?? [];
                 const parent = frame.parentId ? frameMap.get(frame.parentId) : undefined;
                 return (
@@ -2190,7 +2213,7 @@ function RunsInspector({ runs, activeRun, onSelect, onClose }: { runs: Framework
     <div className="inspector-head"><div><span>FRAMEWORK</span><strong>Runs</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
     {!runs.length && <p className="empty-copy">No saved runs yet.</p>}
     <div className="run-list">{runs.map(item => <button key={item.id} className={activeRun?.id === item.id ? 'active' : ''} onClick={() => onSelect(item)}><span>{item.status.toUpperCase()}</span><strong>{new Date(item.startedAt).toLocaleString()}</strong><small>{item.steps.length} elements</small></button>)}</div>
-    {activeRun && <div className="run-detail"><span>Selected run</span>{activeRun.steps.map(step => <article key={step.frameId}><b>{step.frameId}</b><small>{step.status.toUpperCase()} · {step.durationMs}ms</small><p>{short(step.output ?? step.error, 220)}</p></article>)}</div>}
+    {activeRun && <div className="run-detail"><span>Selected run</span>{activeRun.steps.map(step => <article key={step.frameId}><b>{step.frameId}</b><small>{step.reusedFromRunId ? 'REUSED' : step.status.toUpperCase()} · {step.durationMs}ms</small><p>{short(step.output ?? step.error, 220)}</p></article>)}</div>}
   </>;
 }
 
