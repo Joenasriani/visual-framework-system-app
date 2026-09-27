@@ -210,6 +210,13 @@ try {
 
   const layer = page.locator('.layer').last();
   const grip = layer.locator('.layer-grip');
+  await page.evaluate(() => {
+    window.__layerPointerTrace = [];
+    window.__layerTraceHandler = event => {
+      window.__layerPointerTrace.push({ x: event.clientX, y: event.clientY, pointerId: event.pointerId });
+    };
+    window.addEventListener('pointermove', window.__layerTraceHandler);
+  });
   const beforeLayer = await layer.boundingBox();
   const gripBox = await grip.boundingBox();
   const beforeAsset = await page.locator('[data-frame="asset-1"]').boundingBox();
@@ -223,9 +230,19 @@ try {
   const movedLayer = await layer.boundingBox();
   const movedAsset = await page.locator('[data-frame="asset-1"]').boundingBox();
   const movedInstruction = await page.locator('[data-frame="instruction-1"]').boundingBox();
+  const layerTrace = await page.evaluate(() => {
+    const stage = document.querySelector('.stage');
+    const trace = window.__layerPointerTrace || [];
+    if (window.__layerTraceHandler) window.removeEventListener('pointermove', window.__layerTraceHandler);
+    return {
+      trace,
+      stage: stage ? { rect: stage.getBoundingClientRect().toJSON(), scrollLeft: stage.scrollLeft, scrollTop: stage.scrollTop } : null,
+      zoom: document.querySelector('.zoom span')?.textContent
+    };
+  });
   assert(
     movedLayer && movedAsset && movedInstruction && movedAsset.x > beforeAsset.x + 50 && movedInstruction.x > beforeInstruction.x + 50,
-    `Layer move failed geometry: layer ${JSON.stringify({ before: beforeLayer, after: movedLayer })}; asset ${JSON.stringify({ before: beforeAsset, after: movedAsset })}; instruction ${JSON.stringify({ before: beforeInstruction, after: movedInstruction })}`
+    `Layer move failed geometry: layer ${JSON.stringify({ before: beforeLayer, after: movedLayer })}; asset ${JSON.stringify({ before: beforeAsset, after: movedAsset })}; instruction ${JSON.stringify({ before: beforeInstruction, after: movedInstruction })}; trace ${JSON.stringify(layerTrace)}`
   );
 
   const beforeResize = await layer.boundingBox();
