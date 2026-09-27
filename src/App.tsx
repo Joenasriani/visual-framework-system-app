@@ -833,6 +833,7 @@ export default function App() {
   const onLayerHeaderPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>, layer: Layer) => {
     if ((event.target as HTMLElement).closest('input,button')) return;
     event.stopPropagation();
+    event.preventDefault();
     const stage = stageRef.current;
     if (!stage) return;
     const rect = stage.getBoundingClientRect();
