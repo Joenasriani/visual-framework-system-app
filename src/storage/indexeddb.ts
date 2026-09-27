@@ -49,11 +49,18 @@ function normalizeFramework(input: FrameworkDocument): FrameworkDocument {
     proposals: input.proposals ?? [],
     transformations: input.transformations ?? [],
     layers: input.layers ?? [],
+    chains: input.chains ?? [],
     frames: (input.frames ?? []).map(frame => ({
       ...frame,
       role: frame.role ?? defaultRole(frame),
       epistemicState: frame.epistemicState ?? (frame.kind === 'instruction' || frame.kind === 'expression' || frame.kind === 'check' ? 'known' : 'unknown'),
-      provenance: frame.provenance ?? { origin: 'imported', createdAt }
+      provenance: frame.provenance ?? { origin: 'imported', createdAt },
+      executionMode: frame.executionMode ?? 'auto',
+      assumptions: frame.assumptions ?? [],
+      sourceRefs: frame.sourceRefs ?? [],
+      generatedClaims: frame.generatedClaims ?? [],
+      instructionFragments: frame.instructionFragments ?? [],
+      dependency: frame.dependency ?? {}
     })),
     connections: (input.connections ?? []).map(connection => ({
       ...connection,
