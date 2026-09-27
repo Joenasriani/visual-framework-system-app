@@ -1747,6 +1747,7 @@ export default function App() {
   }, [selectedFrame]);
 
   const reset = useCallback(() => {
+    if (persistTimer.current) window.clearTimeout(persistTimer.current);
     const seed = createSeedFramework();
     void saveFramework({ ...frameworkRef.current, id: `saved-${crypto.randomUUID()}`, name: `${frameworkRef.current.name} (saved)` });
     recordHistory(frameworkRef.current, 'Reset Framework');
@@ -2075,7 +2076,7 @@ export default function App() {
                 const step = stepMap.get(frame.id);
                 const active = run?.activeFrameId === frame.id;
                 const selected = selectedFrameIds.includes(frame.id);
-                const body = active ? 'Responding…' : framePlainExplanation(frame);
+                const body = active ? 'Working…' : frame.kind === 'asset' ? (short(frame.value, 150) || 'Double-click to add your text.') : frame.kind === 'output' ? (step ? short(step.output ?? step.error, 150) : 'Run the map to see the result.') : (frame.body || framePlainExplanation(frame));
                 const meta = active ? 'RESPONDING' : step?.status === 'error' ? 'STOPPED' : frame.epistemicState ? stateLabel(frame.epistemicState) : 'UNASSESSED';
                 const children = childrenByParent.get(frame.id) ?? [];
                 const parent = frame.parentId ? frameMap.get(frame.parentId) : undefined;
@@ -2091,7 +2092,6 @@ export default function App() {
                     onPointerDown={event => onFramePointerDown(event, frame)}
                     onPointerMove={onFramePointerMove}
                     onPointerUp={onFramePointerUp}
-                    onDoubleClick={() => { setSelectedFrameIds([frame.id]); openPanel('frame'); }}
                   >
                     <div className="frame-title">{frame.title}</div>
                     <div className="frame-index">{frameFormalTerm(frame)}</div>
