@@ -1,4 +1,4 @@
-const CACHE = 'visual-framework-shell-v5';
+const CACHE = 'visual-framework-shell-v6';
 const CORE = ['/', '/manifest.webmanifest', '/icon.svg'];
 
 async function fetchAndCache(cache, path) {
@@ -6,6 +6,20 @@ async function fetchAndCache(cache, path) {
   if (!response.ok) throw new Error(`Failed to cache shell asset: ${path}`);
   await cache.put(path, response.clone());
   return response;
+}
+
+async function matchCached(requestOrPath) {
+  const cache = await caches.open(CACHE);
+  const direct = await cache.match(requestOrPath, { ignoreVary: true });
+  if (direct) return direct;
+
+  const url = new URL(
+    typeof requestOrPath === 'string' ? requestOrPath : requestOrPath.url,
+    self.location.origin
+  );
+  if (url.origin !== self.location.origin) return undefined;
+
+  return cache.match(url.pathname, { ignoreSearch: true, ignoreVary: true });
 }
 
 async function cacheCurrentShell() {
@@ -68,7 +82,7 @@ self.addEventListener('fetch', event => {
 
     event.waitUntil(refresh.catch(() => undefined));
     event.respondWith(
-      caches.match('/').then(async cached => {
+      matchCached('/').then(async cached => {
         if (cached) return cached;
         try { return await refresh; }
         catch { return Response.error(); }
@@ -77,16 +91,15 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  event.respondWith(
-    caches.match(event.request).then(cached => {
-      if (cached) return cached;
-      return fetch(event.request).then(async response => {
-        if (response.ok) {
-          const cache = await caches.open(CACHE);
-          await cache.put(event.request, response.clone());
-        }
-        return response;
-      });
-    })
-  );
+  event.respondWith((async () => {
+    const cached = await matchCached(event.request);
+    if (cached) return cached;
+
+    const response = await fetch(event.request);
+    if (response.ok) {
+      const cache = await caches.open(CACHE);
+      await cache.put(event.request, response.clone());
+    }
+    return response;
+  })());
 });
