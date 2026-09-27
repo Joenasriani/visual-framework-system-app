@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { compatible, rerunAffectedFramework, runFramework, runSingleFrame, validateFramework } from './domain/engine';
 import { lintFramework } from './domain/linter';
+import { applyChainPlan, buildChainPlan } from './domain/chains';
+import type { ChainPlan } from './domain/chains';
 import { FRAME_ORDERS } from './domain/orders';
 import { parseFrameworkExport, serializeFramework } from './domain/portable';
 import { createSeedFramework, FRAME_HEIGHT, FRAME_WIDTH } from './domain/seed';
@@ -12,6 +14,7 @@ import {
   requestStructuralProposal
 } from './domain/structural';
 import type {
+  ChainType,
   EpistemicState,
   Frame,
   FrameKind,
@@ -62,6 +65,22 @@ const STRUCTURAL_OPERATIONS: Array<[StructuralOperation, string]> = [
   ['identify-assumption','Find Assumptions'],
   ['find-contradiction','Find Conflicts'],
   ['compress','Condense']
+];
+
+const DAG_CHAIN_TYPES: Array<[ChainType, string]> = [
+  ['sequence', 'Sequence'],
+  ['branch', 'Branch'],
+  ['merge', 'Merge'],
+  ['diamond', 'Diamond'],
+  ['parallel', 'Parallel Paths'],
+  ['hierarchy', 'Hierarchy'],
+  ['contain', 'Contain'],
+  ['nested', 'Nested'],
+  ['nested-branch', 'Nested Branch'],
+  ['cascade', 'Cascade'],
+  ['gate', 'Multi-input Gate'],
+  ['network', 'Network'],
+  ['freeform', 'Freeform']
 ];
 
 const ROLE_LABELS: Partial<Record<FrameRole, string>> = {
@@ -484,6 +503,8 @@ export default function App() {
   const [relationshipPickMode, setRelationshipPickMode] = useState(false);
   const [scopeMode, setScopeMode] = useState<ScopeMode>('frame');
   const [relationshipMeaning, setRelationshipMeaning] = useState<RelationshipMeaning>('supports');
+  const [chainType, setChainType] = useState<ChainType>('sequence');
+  const [chainPreview, setChainPreview] = useState<ChainPlan | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const layerDragRef = useRef<LayerDragState | null>(null);
@@ -1525,6 +1546,32 @@ export default function App() {
     return { kind: 'frame', frameIds: selectedFrameId ? [selectedFrameId] : frameworkRef.current.frames.slice(0, 1).map(frame => frame.id) };
   }, [branchIds, scopeMode, selectedFrameId, selectedFrameIds]);
 
+  const previewSelectedChain = useCallback(() => {
+    try {
+      setChainPreview(buildChainPlan(chainType, selectedFrameIds));
+      setStatus('CHAIN PREVIEW');
+    } catch (error) {
+      console.error(error);
+      setChainPreview(null);
+      setStatus('INVALID');
+      window.setTimeout(() => setStatus(current => current === 'INVALID' ? 'READY' : current), 800);
+    }
+  }, [chainType, selectedFrameIds]);
+
+  const applySelectedChain = useCallback(() => {
+    if (!chainPreview) return;
+    changeFramework(current => applyChainPlan(current, chainPreview), { label: `Apply ${label(chainPreview.type)} Chain` });
+    setChainPreview(null);
+    setRun(null);
+    setDirtyExecutionFrameIds([]);
+    setStatus('READY');
+  }, [chainPreview, changeFramework]);
+
+  const cancelChainPreview = useCallback(() => {
+    setChainPreview(null);
+    setStatus(current => current === 'CHAIN PREVIEW' ? 'READY' : current);
+  }, []);
+
   const runStructuralOperation = useCallback(async (operation: StructuralOperation) => {
     setStatus('THINKING');
     try {
@@ -1642,6 +1689,7 @@ export default function App() {
     setSelectedLayerId(null);
     setRun(null);
     setDirtyExecutionFrameIds([]);
+    setChainPreview(null);
     setScale(1);
     pastRef.current = [];
     futureRef.current = [];
@@ -1705,6 +1753,7 @@ export default function App() {
     setSelectedLayerId(null);
     setRun(null);
     setDirtyExecutionFrameIds([]);
+    setChainPreview(null);
     setScale(1);
     setCableMotion(null);
     setStatus('READY');
@@ -1770,6 +1819,7 @@ export default function App() {
         wireRef.current = null;
         setWire(null);
         setRelationshipPickMode(false);
+        setChainPreview(null);
         setPanelOpen(false);
         setStatus('READY');
       }
@@ -1887,6 +1937,16 @@ export default function App() {
             </>}
             {selectedFrameIds.length !== 2 && <button className="quiet-action relationship-action" onClick={() => openPanel('relationships')}>Relationships</button>}
             {selectedFrame && <button className="quiet-action inspect-action" onClick={() => openPanel('frame')}>Inspect</button>}
+            {selectedFrameIds.length >= 2 && <>
+              <select className="chain-select" value={chainType} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => { setChainType(event.target.value as ChainType); setChainPreview(null); setStatus('READY'); }}>
+                {DAG_CHAIN_TYPES.map(([type, name]) => <option key={type} value={type}>{name}</option>)}
+              </select>
+              <button className="quiet-action chain-action" onClick={previewSelectedChain}>Preview Chain</button>
+            </>}
+            {chainPreview && <>
+              <button className="quiet-action chain-apply" onClick={applySelectedChain}>Apply Chain</button>
+              <button className="quiet-action chain-cancel" onClick={cancelChainPreview}>Cancel</button>
+            </>}
             <button className="quiet-action layer-action" onClick={createLayer}>{selectedFrameIds.length ? 'Layer Selection' : 'New Layer'}</button>
             {selectedLayer && <button className="quiet-action layer-delete-action" onClick={() => deleteLayer(selectedLayer.id)}>Delete Layer</button>}
             <button className="quiet-action fit-action" onClick={fitView}>Fit</button>
@@ -2004,6 +2064,18 @@ export default function App() {
                 );
               })}
             </svg>
+
+            {chainPreview && (
+              <svg className="chain-preview-connections" width={worldWidth} height={worldHeight} aria-label="Chain topology preview">
+                {chainPreview.links.map((link, index) => {
+                  const source = frameMap.get(link.fromFrame);
+                  const target = frameMap.get(link.toFrame);
+                  if (!source || !target) return null;
+                  const geometry = curveGeometry(semanticPoint(source, 'from'), semanticPoint(target, 'to'));
+                  return <path key={`${link.kind}-${link.fromFrame}-${link.toFrame}-${index}`} className={`chain-preview-link ${link.kind}`} d={geometry.d} />;
+                })}
+              </svg>
+            )}
 
             <div className="frames">
               {visibleFrames.map(frame => {
