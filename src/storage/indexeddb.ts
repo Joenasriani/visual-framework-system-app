@@ -1,4 +1,4 @@
-import { createSeedFramework } from '../domain/seed';
+import { createEmptyFramework } from '../domain/starter';
 import type { Frame, FrameRole, FrameworkDocument, FrameworkRun } from '../domain/types';
 
 const DB_NAME = 'visual-framework';
@@ -119,7 +119,7 @@ export async function loadFramework(id?: string): Promise<FrameworkDocument> {
   if (saved) return normalizeFramework(saved);
   const migrated = await migrateLegacy(db);
   if (migrated) return migrated;
-  const seed = createSeedFramework();
+  const seed = createEmptyFramework();
   await saveFramework(seed);
   await setActiveFrameworkId(seed.id);
   return seed;

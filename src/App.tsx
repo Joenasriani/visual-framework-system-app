@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { EmptyCanvas, FirstUseGuide, RunExplanation } from './ui/FirstUse';
+import { createEmptyFramework, createEverydayExample, nextItemPosition } from './domain/starter';
 import { compatible, runFramework, runSingleFrame, validateFramework } from './domain/engine';
 import { lintFramework } from './domain/linter';
 import { FRAME_ORDERS } from './domain/orders';
@@ -531,6 +533,10 @@ export default function App() {
   const [run, setRun] = useState<FrameworkRun | null>(null);
   const [runs, setRuns] = useState<FrameworkRun[]>([]);
   const [status, setStatus] = useState('READY');
+  const [showTools, setShowTools] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const busyRef = useRef(false);
+  const fittedExampleRef = useRef('');
   const [scale, setScale] = useState(1);
   const [wire, setWire] = useState<WireState | null>(null);
   const wireRef = useRef<WireState | null>(null);
@@ -776,8 +782,7 @@ export default function App() {
     const preset = ELEMENT_PRESETS.find(item => item.id === presetId);
     if (!preset) return;
     const stage = stageRef.current;
-    const x = Math.max(32, ((stage?.scrollLeft ?? 0) + (stage?.clientWidth ?? 900) / 2) / scale - FRAME_WIDTH / 2 + Math.random() * 22);
-    const y = Math.max(48, ((stage?.scrollTop ?? 0) + (stage?.clientHeight ?? 600) / 2) / scale - FRAME_HEIGHT / 2 + Math.random() * 22);
+    const { x, y } = nextItemPosition(frameworkRef.current, (stage?.scrollLeft ?? 0) / scale + 56, (stage?.scrollTop ?? 0) / scale + 80);
     const base = makeFrame(preset.kind, x, y);
     const frame: Frame = {
       ...base,
@@ -786,14 +791,15 @@ export default function App() {
       epistemicState: preset.epistemicState ?? 'unknown',
       inputs: preset.kind === 'asset' ? [{ id: 'in', name: 'stimulus', type: 'any' }] : base.inputs,
       outputs: preset.kind === 'asset' ? [{ id: 'out', name: 'response', type: 'any' }] : base.outputs,
-      value: preset.kind === 'asset' ? (ELEMENT_EXPLANATIONS[preset.id] ?? preset.label) : base.value,
+      value: preset.kind === 'asset' ? '' : base.value,
       body: preset.kind === 'instruction' ? 'Describe the response or change.' : base.body
     };
     changeFramework(current => ({ ...current, version: (current.version ?? 1) + 1, updatedAt: new Date().toISOString(), frames: [...current.frames, frame] }), { label: `Add ${preset.label}` });
     setSelectedConnectionId(null);
     setSelectedFrameIds([frame.id]);
     setSideMode('frame');
-    setPanelOpen(false);
+    setPanelOpen(true);
+    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.inspector textarea')?.focus());
     setRun(null);
   }, [changeFramework, scale]);
 
@@ -1561,10 +1567,14 @@ export default function App() {
     if (scopeMode === 'framework') return { kind: 'framework', frameIds: frameworkRef.current.frames.map(frame => frame.id) };
     if (scopeMode === 'selection') return { kind: 'selection', frameIds: selectedFrameIds.length ? selectedFrameIds : frameworkRef.current.frames.map(frame => frame.id) };
     if (scopeMode === 'branch' && selectedFrameId) return { kind: 'branch', frameIds: branchIds(selectedFrameId) };
-    return { kind: 'frame', frameIds: selectedFrameId ? [selectedFrameId] : frameworkRef.current.frames.slice(0, 1).map(frame => frame.id) };
+    if (selectedFrameId) return { kind: 'frame', frameIds: [selectedFrameId] };
+    return { kind: 'framework', frameIds: frameworkRef.current.frames.map(frame => frame.id) };
   }, [branchIds, scopeMode, selectedFrameId, selectedFrameIds]);
 
   const runStructuralOperation = useCallback(async (operation: StructuralOperation) => {
+    if (busyRef.current || !frameworkRef.current.frames.length) return;
+    busyRef.current = true;
+    setActionError(null);
     setStatus('THINKING');
     try {
       const proposal = await requestStructuralProposal(frameworkRef.current, currentScope(), operation);
@@ -1574,10 +1584,14 @@ export default function App() {
         updatedAt: new Date().toISOString()
       }), { record: false });
       setSideMode('proposal');
+      setPanelOpen(true);
       setStatus('PROPOSAL');
     } catch (error) {
       setStatus('STOPPED');
+      setActionError(navigator.onLine ? 'AI could not return a suggestion. Try the tool again. Your map has not been changed.' : 'You are offline. Keep editing your map; thinking tools need an internet connection.');
       console.error(error);
+    } finally {
+      busyRef.current = false;
     }
   }, [changeFramework, currentScope]);
 
@@ -1606,6 +1620,8 @@ export default function App() {
       return;
     }
     changeFramework(current => applyProposal(current, activeProposal), { label: `Accept ${activeProposal.operation}` });
+    setRun(null);
+    setPanelOpen(false);
     setSideMode('frame');
     setStatus('READY');
   }, [activeProposal, changeFramework, refreshLists]);
@@ -1613,6 +1629,7 @@ export default function App() {
   const rejectActiveProposal = useCallback(() => {
     if (!activeProposal) return;
     changeFramework(current => rejectProposal(current, activeProposal), { record: false });
+    setPanelOpen(false);
     setSideMode('frame');
     setStatus('READY');
   }, [activeProposal, changeFramework]);
@@ -1630,27 +1647,46 @@ export default function App() {
   }, []);
 
   const executeSelected = useCallback(async () => {
-    if (!selectedFrameId) return;
+    if (!selectedFrameId || busyRef.current) return;
+    busyRef.current = true;
+    setActionError(null);
     setStatus('RUNNING');
-    const single = await runSingleFrame(frameworkRef.current, selectedFrameId, run);
-    const merged = mergeSingleRun(run, single);
-    setRun(merged);
-    setStatus(single.status === 'ok' ? 'PASSED' : 'STOPPED');
-    await saveRun(single).catch(() => undefined);
-    setRuns(await listRuns(frameworkRef.current.id).catch(() => []));
+    try {
+      const single = await runSingleFrame(frameworkRef.current, selectedFrameId, run);
+      const merged = mergeSingleRun(run, single);
+      setRun(merged);
+      setStatus(single.status === 'ok' ? 'PASSED' : 'STOPPED');
+      setSideMode('runs');
+      setPanelOpen(true);
+      await saveRun(single).catch(() => undefined);
+      setRuns(await listRuns(frameworkRef.current.id).catch(() => []));
+    } catch {
+      setStatus('STOPPED');
+      setActionError('This item could not finish. Check its content and connections, then try again.');
+    } finally { busyRef.current = false; }
   }, [mergeSingleRun, run, selectedFrameId]);
 
   const executeAll = useCallback(async () => {
+    if (busyRef.current || !frameworkRef.current.frames.length) return;
+    busyRef.current = true;
+    setActionError(null);
     setStatus('RUNNING');
     const running: FrameworkRun = {
       id: `run-${Date.now()}`, frameworkId: frameworkRef.current.id, status: 'running', startedAt: new Date().toISOString(), activeFrameId: null, steps: []
     };
     setRun(running);
-    const final = await runFramework(frameworkRef.current, event => setRun(event.run));
-    setRun(final);
-    setStatus(final.status === 'ok' ? 'PASSED' : 'STOPPED');
-    await saveRun(final).catch(() => undefined);
-    setRuns(await listRuns(frameworkRef.current.id).catch(() => []));
+    try {
+      const final = await runFramework(frameworkRef.current, event => setRun(event.run));
+      setRun(final);
+      setStatus(final.status === 'ok' ? 'PASSED' : 'STOPPED');
+      setSideMode('runs');
+      setPanelOpen(true);
+      await saveRun(final).catch(() => undefined);
+      setRuns(await listRuns(frameworkRef.current.id).catch(() => []));
+    } catch {
+      setStatus('STOPPED');
+      setActionError('The run could not finish. Your map is still here. Check the connections and try again.');
+    } finally { busyRef.current = false; }
   }, []);
 
   const switchFramework = useCallback(async (id: string) => {
@@ -1672,8 +1708,47 @@ export default function App() {
     await refreshLists(next.id);
   }, [refreshLists]);
 
+  const createWorkspace = useCallback(async (example: boolean) => {
+    if (busyRef.current) return;
+    try {
+      if (persistTimer.current) window.clearTimeout(persistTimer.current);
+      await saveFramework(frameworkRef.current);
+      const next = example ? createEverydayExample() : createEmptyFramework(`map-${crypto.randomUUID()}`);
+      await saveFramework(next);
+      await setActiveFrameworkId(next.id);
+      frameworkRef.current = next;
+      setFramework(next);
+      setSelectedFrameIds([]);
+      setSelectedConnectionId(null);
+      setSelectedLayerId(null);
+      setRun(null);
+      setActionError(null);
+      setPanelOpen(false);
+      setScale(1);
+      setStatus('READY');
+      pastRef.current = [];
+      futureRef.current = [];
+      setHistoryTick(value => value + 1);
+      await refreshLists(next.id);
+    } catch {
+      setActionError('This browser could not save the map. Keep this tab open; no new map was opened.');
+    }
+  }, [refreshLists]);
+
+  const beginGuidedConnection = useCallback(() => {
+    const source = (selectedFrame?.outputs.length ? selectedFrame : null) ?? frameworkRef.current.frames.find(frame => frame.outputs.length);
+    if (!source) return;
+    const port = source.outputs[0];
+    const point = portCenter(source, 'out', 0);
+    setSelectedFrameIds([source.id]);
+    setTapConnect({ fromFrame: source.id, fromPort: port.id, outputType: port.type, x1: point.x, y1: point.y, x2: point.x, y2: point.y, sourceDirection: 'out', previewState: 'neutral' });
+    setPanelOpen(false);
+    setStatus('CHOOSE INPUT');
+  }, [selectedFrame]);
+
   const reset = useCallback(() => {
     const seed = createSeedFramework();
+    void saveFramework({ ...frameworkRef.current, id: `saved-${crypto.randomUUID()}`, name: `${frameworkRef.current.name} (saved)` });
     recordHistory(frameworkRef.current, 'Reset Framework');
     frameworkRef.current = seed;
     setFramework(seed);
@@ -1804,6 +1879,13 @@ export default function App() {
     });
   }, [scale]);
 
+  useEffect(() => {
+    if (!loaded || !framework.id.startsWith('example-') || fittedExampleRef.current === framework.id) return;
+    fittedExampleRef.current = framework.id;
+    const frame = requestAnimationFrame(() => fitView());
+    return () => cancelAnimationFrame(frame);
+  }, [framework.id, loaded, fitView]);
+
   const connectionCount = framework.connections.length;
   const proposalCount = framework.proposals?.filter(item => item.status === 'pending').length ?? 0;
   void historyTick;
@@ -1811,17 +1893,20 @@ export default function App() {
   if (!loaded) return <div className="boot">Visual Framework</div>;
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell${panelOpen ? ' has-inspector' : ''}${!framework.frames.length ? ' is-empty' : ''}`} data-tools={showTools ? 'all' : 'basic'}>
       <header className="topbar">
         <div className="brand"><span className="brand-mark">VF</span><span className="brand-name">Visual Framework</span></div>
         <div className="top-actions">
-          <span className={`status status-${status.toLowerCase()}`}><i /><b>{status}</b></span>
+          <span className={`status status-${status.toLowerCase()}`}><i /><b>{status === 'PASSED' ? 'FINISHED' : status}</b></span>
           <button className="text-btn secondary-top-action" onClick={undo} disabled={!pastRef.current.length}>Undo</button>
           <button className="text-btn secondary-top-action" onClick={redo} disabled={!futureRef.current.length}>Redo</button>
-          <button className="text-btn secondary-top-action" onClick={() => openPanel('issues')}>Checks {lintIssues.length + executionIssues.length}</button>
-          <button className="text-btn secondary-top-action" onClick={() => openPanel('runs')}>Runs {runs.length}</button>
-          <button className="text-btn secondary-top-action" onClick={reset}>Reset</button>
-          <button className="run-button" onClick={() => void executeAll()} disabled={status === 'RUNNING' || status === 'THINKING'}><span>Run</span><kbd>⌘R</kbd></button>
+          <button className="text-btn secondary-top-action advanced-control" onClick={() => openPanel('issues')}>Checks {lintIssues.length + executionIssues.length}</button>
+          <button className="text-btn secondary-top-action advanced-control" onClick={() => openPanel('runs')}>Runs {runs.length}</button>
+          <button className="text-btn secondary-top-action advanced-control" onClick={reset} title="Open the original example; preserve a separate copy of the current map">Reset</button>
+          <button className="text-btn" onClick={() => void createWorkspace(false)} disabled={status === 'RUNNING' || status === 'THINKING'}>New map</button>
+          <button className="text-btn" onClick={() => void createWorkspace(true)} disabled={status === 'RUNNING' || status === 'THINKING'}>Example</button>
+          <button className="text-btn" aria-expanded={showTools} onClick={() => setShowTools(value => !value)}>{showTools ? 'Fewer tools' : 'More tools'}</button>
+          <button className="run-button" onClick={() => void executeAll()} disabled={!framework.frames.length || status === 'RUNNING' || status === 'THINKING'}><span>Run</span><kbd>⌘R</kbd></button>
         </div>
       </header>
 
@@ -1860,19 +1945,24 @@ export default function App() {
             </>}
             {selectedFrameIds.length !== 2 && <button className="quiet-action relationship-action" onClick={() => openPanel('relationships')}>Connections</button>}
             {selectedFrame && <button className="quiet-action inspect-action" onClick={() => openPanel('frame')}>Edit</button>}
-            <button className="quiet-action layer-action" onClick={createLayer}>{selectedFrameIds.length ? 'Group Selected' : 'New Group'}</button>
+            <button className="quiet-action layer-action advanced-control" onClick={createLayer}>{selectedFrameIds.length ? 'Group Selected' : 'New Group'}</button>
             {selectedLayer && <button className="quiet-action layer-delete-action" onClick={() => deleteLayer(selectedLayer.id)}>Delete Group</button>}
             <button className="quiet-action fit-action" onClick={fitView}>Fit</button>
             <div className="zoom"><button onClick={() => setScale(value => clamp(+(value - 0.1).toFixed(2), 0.35, 1.6))}>−</button><span>{Math.round(scale * 100)}%</span><button onClick={() => setScale(value => clamp(+(value + 0.1).toFixed(2), 0.35, 1.6))}>+</button></div>
           </div>
         </div>
 
+        <FirstUseGuide framework={framework} selected={selectedFrame} pending={activeProposal} run={run} busy={status === 'RUNNING' || status === 'THINKING'} error={actionError}
+          onAdd={() => addElementPreset('idea')} onEdit={() => openPanel('frame')} onConnect={beginGuidedConnection}
+          onMeaning={(from, to) => { setSelectedFrameIds([from, to]); openPanel('relationships'); }}
+          onThink={() => void runStructuralOperation('reframe')} onReview={() => openPanel('proposal')} onRun={() => void executeAll()} onResult={() => openPanel('runs')} onClearError={() => setActionError(null)} />
         <div className="structure-bar">
-          <div className="scope-control"><span>APPLY TO</span><select value={scopeMode} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setScopeMode(event.target.value as ScopeMode)}><option value="frame">This item</option><option value="selection">Selected items</option><option value="branch">This path</option><option value="framework">Everything</option></select></div>
+          <span className="scope-summary">Thinking about: <b>{scopeMode === 'framework' || !selectedFrame ? 'all items' : scopeMode === 'selection' ? `${selectedFrameIds.length} selected items` : scopeMode === 'branch' ? `the path from ${selectedFrame.title}` : selectedFrame.title}</b></span>
+          <div className="scope-control advanced-control"><span>APPLY TO</span><select value={scopeMode} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setScopeMode(event.target.value as ScopeMode)}><option value="frame">This item</option><option value="selection">Selected items</option><option value="branch">This path</option><option value="framework">Everything</option></select></div>
           <div className="structure-actions">
-            {STRUCTURAL_OPERATIONS.map(([operation, operationLabel]) => <button key={operation} onClick={() => void runStructuralOperation(operation)} disabled={status === 'THINKING' || status === 'RUNNING'}>{operationLabel}</button>)}
+            {STRUCTURAL_OPERATIONS.map(([operation, operationLabel]) => <button key={operation} className={['expand','reframe','alternatives'].includes(operation) ? '' : 'advanced-control'} title="AI suggests a change for you to review before applying" onClick={() => void runStructuralOperation(operation)} disabled={!framework.frames.length || status === 'THINKING' || status === 'RUNNING'}>{operationLabel}</button>)}
           </div>
-          <div className="goal-control"><span>I WANT TO</span><select value={framework.goal ?? 'understand'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => organizeGoal(event.target.value as FrameworkGoal)}>{GOALS.map(goal => <option key={goal} value={goal}>{GOAL_LABELS[goal]}</option>)}</select></div>
+          <div className="goal-control advanced-control"><span>I WANT TO</span><select value={framework.goal ?? 'understand'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => organizeGoal(event.target.value as FrameworkGoal)}>{GOALS.map(goal => <option key={goal} value={goal}>{GOAL_LABELS[goal]}</option>)}</select></div>
         </div>
 
         <div
@@ -1883,7 +1973,9 @@ export default function App() {
           onPointerUp={endPan}
           onPointerCancel={endPan}
           onWheel={onWheel}
+          onDoubleClick={event => { if (!(event.target as HTMLElement).closest('[data-frame],[data-layer],button,input,select,textarea,.empty-canvas')) addElementPreset('idea'); }}
         >
+          {!framework.frames.length && <EmptyCanvas onAdd={addElementPreset} onExample={() => void createWorkspace(true)} />}
           <div className={`world${scale < 0.58 ? ' zoom-far' : ''}`} style={{ width: worldWidth, height: worldHeight, transform: `scale(${scale})` }}>
             <div className="layers" aria-label="Groups">
               {layers.map(layer => {
@@ -1991,6 +2083,9 @@ export default function App() {
                   <div
                     key={frame.id}
                     data-frame={frame.id}
+                    tabIndex={0} role="group" aria-label={frame.title}
+                    onDoubleClick={event => { if (!(event.target as HTMLElement).closest('button')) { event.stopPropagation(); setSelectedFrameIds([frame.id]); openPanel('frame'); } }}
+                    onKeyDown={event => { if (event.target === event.currentTarget && event.key === 'Enter') { event.preventDefault(); setSelectedFrameIds([frame.id]); openPanel('frame'); } }}
                     className={`frame frame-${frame.kind}${selected ? ' selected' : ''}${active ? ' run-active' : ''}${step?.status === 'ok' ? ' run-ok' : ''}${step?.status === 'error' ? ' run-error' : ''}`}
                     style={{ width: FRAME_WIDTH, height: FRAME_HEIGHT, left: frame.x, top: frame.y }}
                     onPointerDown={event => onFramePointerDown(event, frame)}
@@ -2010,7 +2105,7 @@ export default function App() {
                         data-port="in"
                         data-frame-id={frame.id}
                         data-port-id={port.id}
-                        title="Flow into this item"
+                        title="Receive a result into this item" aria-label={`Receive into ${frame.title}`}
                         className={`port port-in${wire || tapConnect ? (
                           (wire ?? tapConnect)!.sourceDirection !== 'in' &&
                           compatible((wire ?? tapConnect)!.outputType, port.type) &&
@@ -2030,7 +2125,7 @@ export default function App() {
                         data-port="out"
                         data-frame-id={frame.id}
                         data-port-id={port.id}
-                        title="Start a flow from this item"
+                        title="Send a result from this item" aria-label={`Send from ${frame.title}`}
                         className={`port port-out${tapConnect?.fromFrame === frame.id && tapConnect.fromPort === port.id ? ' touch-source' : ''}${wire || tapConnect ? ' cannot-connect' : ''}${portFeedback?.frameId === frame.id && portFeedback.portId === port.id ? ` feedback-${portFeedback.kind}` : ''}`}
                         style={{ top: 54 + index * 22 }}
                         onPointerDown={(event: React.PointerEvent<HTMLButtonElement>) => startWire(event, frame, port, index)}
@@ -2066,7 +2161,7 @@ export default function App() {
         ) : sideMode === 'issues' ? (
           <IssuesInspector issues={lintIssues} executionIssues={executionIssues} onSelect={ids => { setSelectedFrameIds(ids); setSideMode('frame'); closePanel(); }} onClose={() => { closePanel(); setSideMode('frame'); }} />
         ) : sideMode === 'runs' ? (
-          <RunsInspector runs={runs} activeRun={run} onSelect={selected => setRun(selected)} onClose={() => { closePanel(); setSideMode('frame'); }} />
+          <RunsInspector framework={framework} runs={runs} activeRun={run} onSelect={selected => setRun(selected)} onClose={() => { closePanel(); setSideMode('frame'); }} />
         ) : sideMode === 'framework' ? (
           <FrameworkInspector
             framework={framework}
@@ -2142,7 +2237,7 @@ function RelationshipLibraryInspector({ selectedCount, onConnect, onClose }: {
   onClose: () => void;
 }) {
   return <>
-    <div className="inspector-head"><div><span>CONNECTIONS</span><strong>How are these related?</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
+    <div className="inspector-head"><div><span>CONNECTIONS</span><strong>How are these related?</strong></div><button className="close-inspector" aria-label="Close editor" onClick={onClose}>×</button></div>
     <p className="proposal-summary">
       Select two items, then choose what the first one means to the second.
     </p>
@@ -2169,7 +2264,7 @@ function RelationshipLibraryInspector({ selectedCount, onConnect, onClose }: {
 
 function ElementLibraryInspector({ onAdd, onClose }: { onAdd: (presetId: string) => void; onClose: () => void }) {
   return <>
-    <div className="inspector-head"><div><span>ADD SOMETHING</span><strong>Choose an item</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
+    <div className="inspector-head"><div><span>ADD SOMETHING</span><strong>Choose an item</strong></div><button className="close-inspector" aria-label="Close editor" onClick={onClose}>×</button></div>
     <p className="proposal-summary">Choose the kind of thing you want to put on the canvas. You can rename it after adding it.</p>
     {ELEMENT_CATEGORIES.map(category => (
       <div className="order-block" key={category}>
@@ -2203,7 +2298,7 @@ function FrameInspector({ frame, step, selectedCount, childCount, onClose, onCha
   const roleOptions: FrameRole[] = [...new Set<FrameRole>([frame.role ?? 'concept', ...ROLES])];
   const stateOptions: EpistemicState[] = [...new Set<EpistemicState>([frame.epistemicState ?? 'unknown', ...STATES])];
   return <>
-    <div className="inspector-head"><div><span>ITEM</span><strong>{frame.title}</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
+    <div className="inspector-head"><div><span>ITEM</span><strong>{frame.title}</strong></div><button className="close-inspector" aria-label="Close editor" onClick={onClose}>×</button></div>
     <label className="field"><span>Name</span><input value={frame.title} onChange={(event: React.ChangeEvent<HTMLInputElement>) => onChange({ title: event.target.value })} /></label>
     <div className="dual-field">
       <label className="field"><span>This is a</span><select value={frame.role ?? 'concept'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ role: event.target.value as FrameRole })}>{roleOptions.map(role => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
@@ -2214,9 +2309,11 @@ function FrameInspector({ frame, step, selectedCount, childCount, onClose, onCha
     <div className="seg-field"><span>How it works</span><div className="seg"><button className={frame.operation === 'DETERMINISTIC' ? 'active' : ''} onClick={() => onChange({ operation: 'DETERMINISTIC' })}>Use as written</button><button className={frame.operation === 'MODEL' ? 'active' : ''} onClick={() => onChange({ operation: 'MODEL', body: frame.body || `Respond using ${frame.title} as the active perspective.` })}>Ask AI</button></div></div>
     {frame.kind === 'asset' && frame.operation === 'MODEL' && <label className="field"><span>Instruction</span><textarea value={frame.body} onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => onChange({ body: event.target.value, orderPreset: '' })} /></label>}
     {frame.kind === 'expression' && <div className="seg-field"><span>Use As</span><div className="seg"><button className={frame.expressionClass === 'EXECUTABLE' ? 'active' : ''} onClick={() => onChange({ expressionClass: 'EXECUTABLE' })}>Active Rule</button><button className={frame.expressionClass === 'DESCRIPTIVE' ? 'active' : ''} onClick={() => onChange({ expressionClass: 'DESCRIPTIVE' })}>Descriptive Note</button></div></div>}
+    <details className="item-details"><summary>Structure and sources</summary>
     <div className="hierarchy-block"><span>Structure</span><p>{frame.parentId ? 'Inside another item.' : 'Top level item.'}{childCount ? ` Contains ${childCount}.` : ''}</p>{selectedCount > 1 && <button onClick={onContain}>Group selection inside active item</button>}{frame.parentId && <button onClick={onRelease}>Move out of group</button>}{childCount > 0 && <button onClick={onToggleCollapse}>{frame.collapsed ? 'Show contained items' : 'Hide contained items'}</button>}</div>
     <div className="io-block"><span>Relationships</span>{[...frame.inputs.map(port => `Receives · ${port.name}`), ...frame.outputs.map(port => `Leads to · ${port.name}`)].map(text => <code key={text}>{text}</code>)}</div>
     <div className="provenance-block"><span>Added by</span><b>{label(frame.provenance?.origin ?? 'user')}</b>{frame.provenance?.source && <small>{frame.provenance.source}</small>}</div>
+    </details>
     <div className="trace-block"><span>Last run</span>{step ? <><b className={`trace-state trace-${step.status}`}>{step.status === 'ok' ? 'DONE' : 'ERROR'}</b><dl><dt>Input</dt><dd>{short(step.input, 180)}</dd><dt>Instruction</dt><dd>{frame.body || 'Direct response'}</dd><dt>Result</dt><dd>{short(step.output, 180)}</dd><dt>Method</dt><dd>{step.executor === 'MODEL' ? 'AI' : 'Direct'}</dd>{step.error && <><dt>Error</dt><dd>{step.error}</dd></>}</dl></> : <em>Not run</em>}</div>
     <button className="inspector-run" onClick={onRun}>Run This Item</button>
     <button className="delete-btn" onClick={onDelete}>Delete</button>
@@ -2225,7 +2322,8 @@ function FrameInspector({ frame, step, selectedCount, childCount, onClose, onCha
 
 function ProposalInspector({ proposal, onAccept, onReject, onClose }: { proposal: Proposal; onAccept: () => void; onReject: () => void; onClose: () => void }) {
   return <>
-    <div className="inspector-head"><div><span>SUGGESTED CHANGE</span><strong>{STRUCTURAL_OPERATIONS.find(([operation]) => operation === proposal.operation)?.[1] ?? label(proposal.operation)}</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
+    <div className="inspector-head"><div><span>SUGGESTED CHANGE</span><strong>{STRUCTURAL_OPERATIONS.find(([operation]) => operation === proposal.operation)?.[1] ?? label(proposal.operation)}</strong></div><button className="close-inspector" aria-label="Close editor" onClick={onClose}>×</button></div>
+    <p className="proposal-notice">Not applied yet. These are AI suggestions, not verified evidence. Applying adds the items below; dismissing leaves your map unchanged.</p>
     <p className="proposal-summary">{proposal.summary}</p>
     <div className="proposal-list">{proposal.additions.length ? proposal.additions.map(item => <article key={item.tempId}><span>{roleLabel(item.role ?? 'concept')}</span><strong>{item.title}</strong>{item.body && <p>{item.body}</p>}<small>{item.relationshipToAnchor ? relationshipLabel(item.relationshipToAnchor) : 'No relationship specified'}</small></article>) : <p className="empty-copy">No structural addition was proposed.</p>}</div>
     <button className="inspector-run" onClick={onAccept}>{proposal.operation === 'compress' ? 'Create Framework' : 'Apply Changes'}</button>
@@ -2235,7 +2333,7 @@ function ProposalInspector({ proposal, onAccept, onReject, onClose }: { proposal
 
 function IssuesInspector({ issues, executionIssues, onSelect, onClose }: { issues: ReturnType<typeof lintFramework>; executionIssues: string[]; onSelect: (ids: string[]) => void; onClose: () => void }) {
   return <>
-    <div className="inspector-head"><div><span>FRAMEWORK</span><strong>Checks</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
+    <div className="inspector-head"><div><span>FRAMEWORK</span><strong>Checks</strong></div><button className="close-inspector" aria-label="Close editor" onClick={onClose}>×</button></div>
     {!issues.length && !executionIssues.length && <p className="empty-copy">No current concerns.</p>}
     <div className="issue-list">
       {executionIssues.map((message, index) => <article key={`execution-${index}`} className="issue error"><span>RUN</span><p>{checkMessage(message)}</p></article>)}
@@ -2244,12 +2342,12 @@ function IssuesInspector({ issues, executionIssues, onSelect, onClose }: { issue
   </>;
 }
 
-function RunsInspector({ runs, activeRun, onSelect, onClose }: { runs: FrameworkRun[]; activeRun: FrameworkRun | null; onSelect: (run: FrameworkRun) => void; onClose: () => void }) {
+function RunsInspector({ framework, runs, activeRun, onSelect, onClose }: { framework: FrameworkDocument; runs: FrameworkRun[]; activeRun: FrameworkRun | null; onSelect: (run: FrameworkRun) => void; onClose: () => void }) {
   return <>
-    <div className="inspector-head"><div><span>FRAMEWORK</span><strong>Runs</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
+    <div className="inspector-head"><div><span>FRAMEWORK</span><strong>Runs</strong></div><button className="close-inspector" aria-label="Close editor" onClick={onClose}>×</button></div>
     {!runs.length && <p className="empty-copy">No saved runs yet.</p>}
     <div className="run-list">{runs.map(item => <button key={item.id} className={activeRun?.id === item.id ? 'active' : ''} onClick={() => onSelect(item)}><span>{item.status.toUpperCase()}</span><strong>{new Date(item.startedAt).toLocaleString()}</strong><small>{item.steps.length} items</small></button>)}</div>
-    {activeRun && <div className="run-detail"><span>Selected run</span>{activeRun.steps.map(step => <article key={step.frameId}><b>{step.frameId}</b><small>{step.status.toUpperCase()} · {step.durationMs}ms</small><p>{short(step.output ?? step.error, 220)}</p></article>)}</div>}
+    {activeRun && <RunExplanation run={activeRun} framework={framework} />}
   </>;
 }
 

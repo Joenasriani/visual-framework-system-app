@@ -59,6 +59,7 @@ async function storedFrameworkCount() {
 try {
   await page.goto(URL, { waitUntil: 'networkidle', timeout: 60000 });
   await page.getByText('Visual Framework', { exact: true }).first().waitFor();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
 
   const initialFrames = await countFrames();
   assert(initialFrames >= 4, `Expected at least 4 seed Frames, found ${initialFrames}`);
@@ -136,10 +137,10 @@ try {
 
   await page.locator('[data-frame="instruction-1"]').click({ position: { x: 70, y: 30 } });
   await page.getByRole('button', { name: 'Run This Item', exact: true }).click();
-  await page.getByText('PASSED', { exact: true }).waitFor({ timeout: 15000 });
+  await page.getByText('FINISHED', { exact: true }).waitFor({ timeout: 15000 });
 
   await page.locator('.run-button').click();
-  await page.getByText('PASSED', { exact: true }).waitFor({ timeout: 20000 });
+  await page.getByText('FINISHED', { exact: true }).waitFor({ timeout: 20000 });
   await page.getByRole('button', { name: /Runs \d+/ }).click();
   await page.getByText('Runs', { exact: true }).last().waitFor();
   assert(await page.locator('.run-list button').count() >= 1, 'Stored Run inspection failed');

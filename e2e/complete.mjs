@@ -51,6 +51,7 @@ await page.route('**/api/model', async route => {
 try {
   await page.goto(URL, { waitUntil: 'networkidle', timeout: 60000 });
   await page.getByText('Visual Framework', { exact: true }).first().waitFor();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
   await page.getByRole('button', { name: 'Reset', exact: true }).click();
   await sleep(150);
 
@@ -280,6 +281,8 @@ try {
   await page.keyboard.press('Control+Shift+z');
   assert(await page.locator('.connection-group.semantic').count() === sem0 + 1, 'Redo semantic relationship failed');
   await page.keyboard.press('Control+z');
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByText('Structure and sources', { exact: true }).click();
   await page.getByRole('button', { name: 'Group selection inside active item' }).click();
   await page.locator('[data-frame="asset-1"] .frame-parent').waitFor();
   await page.keyboard.press('Control+z');
@@ -304,7 +307,7 @@ try {
     window.__vfObserver = observer;
   });
   await page.locator('.run-button').click();
-  await page.getByText('PASSED', { exact: true }).first().waitFor({ timeout: 15000 });
+  await page.getByText('FINISHED', { exact: true }).first().waitFor({ timeout: 15000 });
   const progress = await page.evaluate(() => { window.__vfObserver?.disconnect(); return window.__vfProgress || []; });
   assert(progress.length >= 2 && progress.some(value => value !== '4/4'), `Progressive states missing: ${progress.join(', ')}`);
 

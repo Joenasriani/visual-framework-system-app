@@ -29,6 +29,8 @@ try {
 
   await page.goto(URL, { waitUntil: 'networkidle', timeout: 60000 });
   await page.getByText('Visual Framework', { exact: true }).first().waitFor();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
 
   await page.evaluate(async () => { await navigator.serviceWorker.ready; });
   if (!(await page.evaluate(() => Boolean(navigator.serviceWorker.controller)))) {
