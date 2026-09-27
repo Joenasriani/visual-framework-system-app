@@ -511,6 +511,28 @@ try {
   assert(Boolean(reuseProof.c?.reusedFromRunId), `Unaffected branch was not marked reused: ${JSON.stringify(reuseProof)}`);
   assert(!reuseProof.d?.reusedFromRunId, `Dependent merge was incorrectly reused: ${JSON.stringify(reuseProof)}`);
 
+  // Portable JSON round-trip restores the canonical Framework after destructive local edits.
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export', exact: true }).click();
+  const exportDownload = await downloadPromise;
+  const exportPath = await exportDownload.path();
+  assert(exportPath, 'Framework export did not produce a local file');
+  assert(exportDownload.suggestedFilename().endsWith('.vfa.json'), 'Framework export filename is not a VFA JSON file');
+
+  const portableFrameCount = await frameCount();
+  const portableExecutionCount = await executionCount();
+  await page.locator('[data-frame="parallel-b"]').click({ position: { x: 70, y: 30 } });
+  await page.keyboard.press('Delete');
+  await sleep(100);
+  assert(await frameCount() === portableFrameCount - 1, 'Destructive edit before import proof failed');
+
+  await page.locator('[data-framework-import]').setInputFiles(exportPath);
+  await page.getByText('Parallel Branch Merge Proof', { exact: true }).first().waitFor();
+  await sleep(120);
+  assert(await frameCount() === portableFrameCount, 'Imported Framework did not restore all Frames');
+  assert(await executionCount() === portableExecutionCount, 'Imported Framework did not restore all execution connections');
+  assert(await page.locator('[data-frame="merge-d"] [data-port="in"]').count() === 2, 'Imported merge did not preserve both input ports');
+
   await page.evaluate(async () => {
     const request = indexedDB.open('visual-framework', 2);
     const db = await new Promise((resolve, reject) => {
