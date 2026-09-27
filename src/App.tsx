@@ -699,7 +699,7 @@ export default function App() {
       updatedAt: new Date().toISOString(),
       version: (current.version ?? 1) + (record ? 1 : 0),
       layers: (current.layers ?? []).map(layer => layer.id === layerId ? { ...layer, ...patch } : layer)
-    }), { record, label: 'Edit Layer' });
+    }), { record, label: 'Edit Group' });
   }, [changeFramework]);
 
   const createLayer = useCallback(() => {
@@ -739,7 +739,7 @@ export default function App() {
       updatedAt: new Date().toISOString(),
       layers: [...(current.layers ?? []), layer],
       frames: current.frames.map(frame => ids.has(frame.id) ? { ...frame, layerId: id } : frame)
-    }), { label: selected.length ? 'Group Frames in Layer' : 'Create Layer' });
+    }), { label: selected.length ? 'Group Selected Items' : 'Create Group' });
     setSelectedFrameIds([]);
     setSelectedConnectionId(null);
     setSelectedLayerId(id);
@@ -755,7 +755,7 @@ export default function App() {
       layers: (current.layers ?? []).filter(layer => layer.id !== layerId),
       frames: current.frames.filter(frame => !ids.has(frame.id)),
       connections: current.connections.filter(connection => !ids.has(connection.fromFrame) && !ids.has(connection.toFrame))
-    }), { label: 'Delete Layer' });
+    }), { label: 'Delete Group' });
     setSelectedLayerId(null);
     setSelectedFrameIds([]);
     setSelectedConnectionId(null);
@@ -989,7 +989,7 @@ export default function App() {
     }
 
     if (drag.moved) {
-      recordHistory(drag.before, 'Move Layer');
+      recordHistory(drag.before, 'Move Group');
       changeFramework(current => ({
         ...current,
         layers: (current.layers ?? []).map(layer => layer.id === drag.layerId
@@ -1001,7 +1001,7 @@ export default function App() {
             ? { ...frame, x: Math.max(8, start.x + drag.dx), y: Math.max(8, start.y + drag.dy) }
             : frame;
         })
-      }), { record: false, label: 'Move Layer' });
+      }), { record: false, label: 'Move Group' });
     }
     playGraphClick('connect');
   }, [changeFramework, recordHistory, scale]);
@@ -1094,7 +1094,7 @@ export default function App() {
     if (!resize || resize.pointerId !== event.pointerId) return;
     layerResizeRef.current = null;
     if (resize.moved) {
-      recordHistory(resize.before, 'Resize Layer');
+      recordHistory(resize.before, 'Resize Group');
       persist(frameworkRef.current, 0);
     }
   }, [persist, recordHistory]);
@@ -2203,7 +2203,7 @@ function FrameInspector({ frame, step, selectedCount, childCount, onClose, onCha
   const roleOptions: FrameRole[] = [...new Set<FrameRole>([frame.role ?? 'concept', ...ROLES])];
   const stateOptions: EpistemicState[] = [...new Set<EpistemicState>([frame.epistemicState ?? 'unknown', ...STATES])];
   return <>
-    <div className="inspector-head"><div><span>ELEMENT</span><strong>{frame.title}</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
+    <div className="inspector-head"><div><span>ITEM</span><strong>{frame.title}</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
     <label className="field"><span>Name</span><input value={frame.title} onChange={(event: React.ChangeEvent<HTMLInputElement>) => onChange({ title: event.target.value })} /></label>
     <div className="dual-field">
       <label className="field"><span>This is a</span><select value={frame.role ?? 'concept'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ role: event.target.value as FrameRole })}>{roleOptions.map(role => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
@@ -2214,7 +2214,7 @@ function FrameInspector({ frame, step, selectedCount, childCount, onClose, onCha
     <div className="seg-field"><span>How it works</span><div className="seg"><button className={frame.operation === 'DETERMINISTIC' ? 'active' : ''} onClick={() => onChange({ operation: 'DETERMINISTIC' })}>Use as written</button><button className={frame.operation === 'MODEL' ? 'active' : ''} onClick={() => onChange({ operation: 'MODEL', body: frame.body || `Respond using ${frame.title} as the active perspective.` })}>Ask AI</button></div></div>
     {frame.kind === 'asset' && frame.operation === 'MODEL' && <label className="field"><span>Instruction</span><textarea value={frame.body} onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => onChange({ body: event.target.value, orderPreset: '' })} /></label>}
     {frame.kind === 'expression' && <div className="seg-field"><span>Use As</span><div className="seg"><button className={frame.expressionClass === 'EXECUTABLE' ? 'active' : ''} onClick={() => onChange({ expressionClass: 'EXECUTABLE' })}>Active Rule</button><button className={frame.expressionClass === 'DESCRIPTIVE' ? 'active' : ''} onClick={() => onChange({ expressionClass: 'DESCRIPTIVE' })}>Descriptive Note</button></div></div>}
-    <div className="hierarchy-block"><span>Structure</span><p>{frame.parentId ? 'Inside another element.' : 'Top level element.'}{childCount ? ` Contains ${childCount}.` : ''}</p>{selectedCount > 1 && <button onClick={onContain}>Group selection inside active element</button>}{frame.parentId && <button onClick={onRelease}>Move out of group</button>}{childCount > 0 && <button onClick={onToggleCollapse}>{frame.collapsed ? 'Show contained elements' : 'Hide contained elements'}</button>}</div>
+    <div className="hierarchy-block"><span>Structure</span><p>{frame.parentId ? 'Inside another item.' : 'Top level item.'}{childCount ? ` Contains ${childCount}.` : ''}</p>{selectedCount > 1 && <button onClick={onContain}>Group selection inside active item</button>}{frame.parentId && <button onClick={onRelease}>Move out of group</button>}{childCount > 0 && <button onClick={onToggleCollapse}>{frame.collapsed ? 'Show contained items' : 'Hide contained items'}</button>}</div>
     <div className="io-block"><span>Relationships</span>{[...frame.inputs.map(port => `Receives · ${port.name}`), ...frame.outputs.map(port => `Leads to · ${port.name}`)].map(text => <code key={text}>{text}</code>)}</div>
     <div className="provenance-block"><span>Added by</span><b>{label(frame.provenance?.origin ?? 'user')}</b>{frame.provenance?.source && <small>{frame.provenance.source}</small>}</div>
     <div className="trace-block"><span>Last run</span>{step ? <><b className={`trace-state trace-${step.status}`}>{step.status === 'ok' ? 'DONE' : 'ERROR'}</b><dl><dt>Input</dt><dd>{short(step.input, 180)}</dd><dt>Instruction</dt><dd>{frame.body || 'Direct response'}</dd><dt>Result</dt><dd>{short(step.output, 180)}</dd><dt>Method</dt><dd>{step.executor === 'MODEL' ? 'AI' : 'Direct'}</dd>{step.error && <><dt>Error</dt><dd>{step.error}</dd></>}</dl></> : <em>Not run</em>}</div>
@@ -2248,7 +2248,7 @@ function RunsInspector({ runs, activeRun, onSelect, onClose }: { runs: Framework
   return <>
     <div className="inspector-head"><div><span>FRAMEWORK</span><strong>Runs</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
     {!runs.length && <p className="empty-copy">No saved runs yet.</p>}
-    <div className="run-list">{runs.map(item => <button key={item.id} className={activeRun?.id === item.id ? 'active' : ''} onClick={() => onSelect(item)}><span>{item.status.toUpperCase()}</span><strong>{new Date(item.startedAt).toLocaleString()}</strong><small>{item.steps.length} elements</small></button>)}</div>
+    <div className="run-list">{runs.map(item => <button key={item.id} className={activeRun?.id === item.id ? 'active' : ''} onClick={() => onSelect(item)}><span>{item.status.toUpperCase()}</span><strong>{new Date(item.startedAt).toLocaleString()}</strong><small>{item.steps.length} items</small></button>)}</div>
     {activeRun && <div className="run-detail"><span>Selected run</span>{activeRun.steps.map(step => <article key={step.frameId}><b>{step.frameId}</b><small>{step.status.toUpperCase()} · {step.durationMs}ms</small><p>{short(step.output ?? step.error, 220)}</p></article>)}</div>}
   </>;
 }
