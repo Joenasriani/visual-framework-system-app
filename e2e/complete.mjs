@@ -367,7 +367,12 @@ try {
   // PWA reloads offline and an online Frame fails explicitly without network.
   await page.getByRole('button', { name: 'Reset', exact: true }).click();
   await page.evaluate(async () => { await navigator.serviceWorker.ready; });
-  if (!(await page.evaluate(() => Boolean(navigator.serviceWorker.controller)))) await page.reload({ waitUntil: 'networkidle' });
+  if (!(await page.evaluate(() => Boolean(navigator.serviceWorker.controller)))) {
+    await page.reload({ waitUntil: 'networkidle' });
+  }
+  await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, { timeout: 8000 });
+  const shellCached = await page.evaluate(async () => Boolean(await caches.match('/')));
+  assert(shellCached, 'Offline shell was not cached before disconnecting');
   await page.unroute('**/api/model');
   await context.setOffline(true);
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
