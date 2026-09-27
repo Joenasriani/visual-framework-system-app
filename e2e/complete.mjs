@@ -471,6 +471,46 @@ try {
   });
   assert(Array.isArray(mergeInput) && mergeInput.length === 2, `Merge did not receive both branch outputs: ${JSON.stringify(mergeInput)}`);
 
+  // Editing one branch reuses unaffected branch output and reruns only the changed downstream region.
+  parallelTrace.length = 0;
+  await page.locator('[data-frame="parallel-b"]').dblclick({ position: { x: 70, y: 30 } });
+  const branchInspector = page.locator('.inspector');
+  const branchInstruction = branchInspector.locator('textarea').first();
+  await branchInstruction.fill('Branch B changed locally');
+  await sleep(80);
+  assert(await page.getByText('CHANGED', { exact: true }).count() >= 1, 'Changed Frame was not marked stale');
+  await page.locator('.run-button').click();
+  await page.getByText('PASSED', { exact: true }).first().waitFor({ timeout: 15000 });
+
+  const selectiveTitles = parallelTrace.filter(item => item.phase === 'start').map(item => item.title);
+  assert(selectiveTitles.includes('Parallel B'), `Changed branch did not rerun: ${JSON.stringify(parallelTrace)}`);
+  assert(!selectiveTitles.includes('Parallel C'), `Unaffected branch reran instead of reusing output: ${JSON.stringify(parallelTrace)}`);
+  assert(selectiveTitles.includes('Merge D'), `Downstream merge did not rerun: ${JSON.stringify(parallelTrace)}`);
+
+  const reuseProof = await page.evaluate(async () => {
+    const request = indexedDB.open('visual-framework', 2);
+    const db = await new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const runs = await new Promise((resolve, reject) => {
+      const tx = db.transaction('runs', 'readonly');
+      const req = tx.objectStore('runs').getAll();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    db.close();
+    const run = runs.filter(item => item.frameworkId === 'framework-parallel-proof').sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+    return {
+      b: run?.steps?.find(step => step.frameId === 'parallel-b'),
+      c: run?.steps?.find(step => step.frameId === 'parallel-c'),
+      d: run?.steps?.find(step => step.frameId === 'merge-d')
+    };
+  });
+  assert(!reuseProof.b?.reusedFromRunId, `Changed branch was incorrectly reused: ${JSON.stringify(reuseProof)}`);
+  assert(Boolean(reuseProof.c?.reusedFromRunId), `Unaffected branch was not marked reused: ${JSON.stringify(reuseProof)}`);
+  assert(!reuseProof.d?.reusedFromRunId, `Dependent merge was incorrectly reused: ${JSON.stringify(reuseProof)}`);
+
   await page.evaluate(async () => {
     const request = indexedDB.open('visual-framework', 2);
     const db = await new Promise((resolve, reject) => {
