@@ -478,7 +478,7 @@ try {
   const branchInstruction = branchInspector.locator('textarea').first();
   await branchInstruction.fill('Branch B changed locally');
   await sleep(80);
-  assert(await page.getByText('CHANGED', { exact: true }).count() >= 1, 'Changed Frame was not marked stale');
+  assert(await page.getByText('CHANGED', { exact: true }).count() >= 2, 'Changed Frame and downstream merge were not both marked stale');
   await page.locator('.run-button').click();
   await page.getByText('PASSED', { exact: true }).first().waitFor({ timeout: 15000 });
 
