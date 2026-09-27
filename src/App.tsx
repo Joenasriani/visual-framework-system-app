@@ -43,39 +43,71 @@ const KIND_LABELS: Record<FrameKind, string> = {
 };
 
 const ROLES: FrameRole[] = [
-  'concept','claim','question','assumption','evidence','constraint','variable','observation','perspective','cause','effect','decision','criterion','hypothesis','alternative','unknown','contradiction','transformation','evaluation','result','instruction'
+  'concept','question','observation','claim','assumption','evidence','hypothesis','alternative','result','instruction'
 ];
 const STATES: EpistemicState[] = [
-  'known','supported','verified','assumed','inferred','hypothesized','disputed','contradicted','unknown','unresolved','invalid'
+  'known','supported','assumed','hypothesized','contradicted','unknown','unresolved'
 ];
 const GOALS: FrameworkGoal[] = ['understand','explain','decide','invent','research','compare','challenge'];
+const GOAL_LABELS: Record<FrameworkGoal, string> = {
+  understand: 'Understand',
+  explain: 'Explain',
+  decide: 'Decide',
+  invent: 'Create',
+  research: 'Research',
+  compare: 'Compare',
+  challenge: 'Challenge'
+};
 const RELATIONSHIPS: RelationshipMeaning[] = [
-  'supports','challenges','contradicts','depends-on','causes','influences','constrains','explains','derives-from','evidence-for','assumes','questions','tests','validates','refines','reframes','alternative-to','contains','part-of'
+  'supports','contradicts','depends-on','causes','influences','part-of','alternative-to'
 ];
 const STRUCTURAL_OPERATIONS: Array<[StructuralOperation, string]> = [
-  ['expand','Explore Further'],
-  ['reframe','Reframe'],
-  ['alternatives','Explore Alternatives'],
-  ['challenge','Test Reasoning'],
-  ['find-missing','Find Gaps'],
+  ['expand','Add Detail'],
+  ['reframe','Look Another Way'],
+  ['alternatives','Find Alternatives'],
+  ['challenge','Challenge'],
+  ['find-missing',"What's Missing?"],
   ['identify-assumption','Find Assumptions'],
   ['find-contradiction','Find Conflicts'],
-  ['compress','Condense']
+  ['compress','Simplify']
 ];
 
 const ROLE_LABELS: Partial<Record<FrameRole, string>> = {
+  concept: 'Idea',
+  claim: 'Claim',
+  question: 'Question',
+  assumption: 'Assumption',
+  evidence: 'Evidence',
   constraint: 'Condition',
-  effect: 'Outcome',
-  alternative: 'Alternative Explanation',
+  variable: 'Factor',
+  observation: 'Observation',
+  perspective: 'Perspective',
+  cause: 'Cause',
+  effect: 'Effect',
+  decision: 'Decision',
+  criterion: 'Goal',
+  hypothesis: 'Possible Explanation',
+  alternative: 'Alternative',
+  unknown: 'Unknown',
   contradiction: 'Conflict',
-  transformation: 'Change Process',
-  evaluation: 'Assessment',
-  result: 'Finding',
-  instruction: 'Process'
+  transformation: 'Change',
+  evaluation: 'Check',
+  result: 'Result',
+  instruction: 'Instruction'
 };
 
 const STATE_LABELS: Partial<Record<EpistemicState, string>> = {
-  disputed: 'Mixed / Disputed'
+  known: 'Known',
+  supported: 'Has Support',
+  verified: 'Checked',
+  assumed: 'Assumption',
+  inferred: 'Reasoned',
+  hypothesized: 'Possible',
+  disputed: 'Mixed',
+  contradicted: 'Conflicted',
+  unknown: 'Unknown',
+  unresolved: 'Not Settled',
+  invalid: "Doesn't Fit"
 };
 
 interface ElementPreset {
@@ -90,6 +122,7 @@ interface ElementPreset {
 }
 
 const ELEMENT_PRESETS: ElementPreset[] = [
+  { id: 'idea', label: 'Idea', technical: 'Concept / proposition', category: 'Research & Reasoning', kind: 'asset', role: 'concept', glyph: '◇' },
   { id: 'thought', label: 'Thought', technical: 'Cognition / cognitive appraisal', category: 'Mind & Experience', kind: 'asset', role: 'concept', glyph: '◇' },
   { id: 'feeling', label: 'Feeling', technical: 'Affect / emotional state', category: 'Mind & Experience', kind: 'asset', role: 'variable', glyph: '≈' },
   { id: 'belief', label: 'Belief', technical: 'Belief / schema where applicable', category: 'Mind & Experience', kind: 'asset', role: 'concept', glyph: 'B' },
@@ -141,11 +174,19 @@ const ELEMENT_PRESETS: ElementPreset[] = [
   { id: 'run-result', label: 'Run Result', technical: 'Result produced by a framework run', category: 'Framework Tools', kind: 'output', role: 'result', epistemicState: 'inferred', glyph: '□' }
 ];
 
-const FEATURED_ELEMENT_IDS = ['thought', 'feeling', 'behavior', 'context', 'evidence'];
+const FEATURED_ELEMENT_IDS = ['idea', 'question', 'observation', 'assumption', 'evidence'];
 const FEATURED_ELEMENT_PRESETS = FEATURED_ELEMENT_IDS.map(id => ELEMENT_PRESETS.find(preset => preset.id === id)!).filter(Boolean);
 const ELEMENT_CATEGORIES: ElementPreset['category'][] = ['Mind & Experience', 'Behavior & Context', 'People & Society', 'Research & Reasoning', 'Framework Tools'];
+const ELEMENT_CATEGORY_LABELS: Record<ElementPreset['category'], string> = {
+  'Mind & Experience': 'Thoughts & Feelings',
+  'Behavior & Context': 'Actions & Situations',
+  'People & Society': 'People & Groups',
+  'Research & Reasoning': 'Ideas, Questions & Evidence',
+  'Framework Tools': 'Tools'
+};
 
 const ELEMENT_EXPLANATIONS: Record<string, string> = {
+  idea: 'Something you want to explore or connect.',
   thought: 'What you think.',
   feeling: 'What you feel.',
   belief: 'What you hold to be true.',
@@ -194,7 +235,7 @@ const ELEMENT_EXPLANATIONS: Record<string, string> = {
 };
 
 const presetForFrame = (frame: Frame) => ELEMENT_PRESETS.find(preset => preset.label.toLowerCase() === frame.title.trim().toLowerCase());
-const frameFormalTerm = (frame: Frame) => presetForFrame(frame)?.technical ?? roleLabel(frame.role ?? 'concept');
+const frameFormalTerm = (frame: Frame) => roleLabel(frame.role ?? 'concept');
 const framePlainExplanation = (frame: Frame) => {
   const preset = presetForFrame(frame);
   if (preset) return ELEMENT_EXPLANATIONS[preset.id] ?? 'A part of the current behavior or social situation.';
@@ -242,13 +283,13 @@ const RELATIONSHIP_PRESETS: RelationshipPreset[] = [
   { meaning: 'assumes', label: 'Assumes', technical: 'Assumption dependency', category: 'Evidence & Reasoning' },
   { meaning: 'questions', label: 'Questions', technical: 'Question / challenge relation', category: 'Evidence & Reasoning' },
 
-  { meaning: 'refines', label: 'Refines', technical: 'Refinement relation', category: 'Interpretation & Alternatives' },
-  { meaning: 'reframes', label: 'Reframes', technical: 'Interpretive reframing relation', category: 'Interpretation & Alternatives' },
-  { meaning: 'alternative-to', label: 'Alternative To', technical: 'Competing explanation / position', category: 'Interpretation & Alternatives' },
+  { meaning: 'refines', label: 'Adds Detail To', technical: 'Refinement relation', category: 'Interpretation & Alternatives' },
+  { meaning: 'reframes', label: 'Looks At Differently', technical: 'Interpretive reframing relation', category: 'Interpretation & Alternatives' },
+  { meaning: 'alternative-to', label: 'Another View Of', technical: 'Competing explanation / position', category: 'Interpretation & Alternatives' },
   { meaning: 'derives-from', label: 'Comes From', technical: 'Derivation / provenance relation', category: 'Interpretation & Alternatives' },
 
   { meaning: 'contains', label: 'Contains', technical: 'Containment relation', category: 'Structure' },
-  { meaning: 'part-of', label: 'Part Of', technical: 'Part-whole relation', category: 'Structure' }
+  { meaning: 'part-of', label: 'Is Part Of', technical: 'Part-whole relation', category: 'Structure' }
 ];
 
 const RELATIONSHIP_CATEGORIES: RelationshipPreset['category'][] = [
@@ -257,6 +298,12 @@ const RELATIONSHIP_CATEGORIES: RelationshipPreset['category'][] = [
   'Interpretation & Alternatives',
   'Structure'
 ];
+const RELATIONSHIP_CATEGORY_LABELS: Record<RelationshipPreset['category'], string> = {
+  'Influence & Explanation': 'How Things Affect Each Other',
+  'Evidence & Reasoning': 'Support Or Challenge',
+  'Interpretation & Alternatives': 'Other Ways To See It',
+  'Structure': 'Groups And Parts'
+};
 
 const RELATIONSHIP_LABELS: Partial<Record<RelationshipMeaning, string>> = Object.fromEntries(
   RELATIONSHIP_PRESETS.map(preset => [preset.meaning, preset.label])
