@@ -101,12 +101,12 @@ try {
   const stepAfter = await page.locator('[data-frame="instruction-1"]').boundingBox();
   assert(assetAfter && stepAfter && assetAfter.x > assetBefore.x + 40 && stepAfter.x > stepBefore.x + 40, 'Multi Frame movement failed');
 
-  await page.getByRole('button', { name: 'Group selection inside active element' }).click();
+  await page.getByRole('button', { name: 'Group selection inside active item' }).click();
   await page.locator('[data-frame="asset-1"] .frame-parent').waitFor();
-  await page.getByRole('button', { name: 'Hide contained elements' }).click();
+  await page.getByRole('button', { name: 'Hide contained items' }).click();
   await page.waitForTimeout(120);
   assert(await page.locator('[data-frame="asset-1"]').count() === 0, 'Hierarchy collapse failed');
-  await page.getByRole('button', { name: 'Show contained elements' }).click();
+  await page.getByRole('button', { name: 'Show contained items' }).click();
   await page.locator('[data-frame="asset-1"]').waitFor();
 
   await page.locator('.relation-select').selectOption('supports');
