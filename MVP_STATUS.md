@@ -1,10 +1,23 @@
 # Visual Framework MVP Status
 
-Status: BASELINE ACCEPTED / FINAL MVP 1.0 PRE-FREEZE
+Status: RELEASE CANDIDATE SOURCE ACCEPTED / PRODUCTION DEPLOYMENT PENDING
 
 Baseline accepted: September 15, 2026
+Current release-candidate source accepted: September 27, 2026
 
-The September 15 desktop baseline passed its implementation, build, production, and live interaction acceptance gates. It remains preserved as historical evidence. The current project is completing the final MVP 1.0 pass before freeze.
+The September 15 desktop baseline passed its implementation, build, production, and live interaction acceptance gates. It remains preserved as historical evidence.
+
+The September 27 beginner-first MVP pass is now merged to `main`. Its checked-out source passed strict type checking, production build, current MVP acceptance, beginner-first acceptance, and true offline PWA reload acceptance. Production is not yet frozen because the public Vercel deployment is still serving an older build and must be redeployed before the final live production gate can pass.
+
+## Indiegogo MVP scope lock
+
+For the Indiegogo-facing MVP, the active release scope is the accepted MVP capability below plus `MVP_BEGINNER_INTERACTION_CONTRACT.md`.
+
+The advanced runtime / graph-compositing work is explicitly **post-MVP and frozen outside the release path**. It must not block, expand, or overwrite the Indiegogo MVP. The preserved advanced branch is `frozen-advanced-runtime-2026-09-27`.
+
+`FRAMEWORK_TASKS.md` remains a future register. Its advanced typed-recursive-runtime, chain-topology, selective-recompute, counterfactual, and compositing sections are **not release gates for the Indiegogo MVP**. They must be reclassified before post-MVP development resumes.
+
+Do not merge advanced runtime work into `main` before the MVP production freeze.
 
 ## Accepted MVP capability
 
@@ -45,7 +58,7 @@ The September 15 desktop baseline passed its implementation, build, production, 
 
 ## Acceptance verification
 
-The accepted production MVP passed all of the following gates:
+The accepted production baseline passed all of the following gates:
 
 1. Strict TypeScript type checking.
 2. Vite production build.
@@ -67,14 +80,23 @@ The accepted production MVP passed all of the following gates:
 18. Deterministic offline PWA shell reload using the current hashed Vite assets.
 19. Explicit failure of online model execution when the network is unavailable.
 
+The September 27 release-candidate source additionally passed the current beginner-first acceptance suite and a true offline reload test after the service-worker cache correction.
+
 ## MVP completion boundary
 
-The accepted MVP now supports the complete target loop:
+The MVP supports the complete target loop:
 
 Construct and connect → Expand → Reframe → Generate alternatives → Challenge and find gaps → Reorganize around a goal → Compress → produce a result or a new Framework.
 
 The canonical Framework remains preserved unless the user explicitly accepts a change. Important structural transformations remain inspectable and reversible.
 
-This closed the September 15 baseline scope. It does not override the later final MVP completion requirements.
+## Final freeze gate
 
-The current beginner-facing contract is `MVP_BEGINNER_INTERACTION_CONTRACT.md`. The remaining final MVP completion work is controlled by `FRAMEWORK_TASKS.md`. MVP 1.0 should be marked FROZEN only after that completion pass and its acceptance tests pass.
+MVP 1.0 may be marked **FROZEN** only after all of the following are true:
+
+1. The September 27 release-candidate source is deployed to the canonical production project `visual-framework-app`.
+2. `https://visual-framework-app.vercel.app` serves that build.
+3. Production smoke and complete live acceptance pass against the canonical URL.
+4. No advanced-runtime branch is merged into the MVP release path.
+
+Until those four conditions pass, the accurate state is **release-candidate source accepted; production deployment pending**.
