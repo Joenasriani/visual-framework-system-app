@@ -901,6 +901,21 @@ export default function App() {
   const onLayerHeaderPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const drag = layerDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+
+    // Pointermove events may be coalesced. The release coordinate is authoritative
+    // for the final drag transaction.
+    const stage = stageRef.current;
+    if (stage) {
+      const rect = stage.getBoundingClientRect();
+      const worldX = (event.clientX - rect.left + stage.scrollLeft) / scale;
+      const worldY = (event.clientY - rect.top + stage.scrollTop) / scale;
+      const nextX = Math.max(8, drag.startLayer.x + (worldX - drag.startWorldX));
+      const nextY = Math.max(8, drag.startLayer.y + (worldY - drag.startWorldY));
+      drag.dx = nextX - drag.startLayer.x;
+      drag.dy = nextY - drag.startLayer.y;
+      if (Math.abs(drag.dx) + Math.abs(drag.dy) > 1) drag.moved = true;
+    }
+
     layerDragRef.current = null;
 
     const layerElement = Array.from(document.querySelectorAll<HTMLElement>('[data-layer]'))
@@ -928,7 +943,7 @@ export default function App() {
       }), { record: false, label: 'Move Layer' });
     }
     playGraphClick('connect');
-  }, [changeFramework, recordHistory]);
+  }, [changeFramework, recordHistory, scale]);
 
   useEffect(() => {
     const onMove = (event: PointerEvent) => {
