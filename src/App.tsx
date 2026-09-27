@@ -374,6 +374,8 @@ interface LayerDragState {
   startLayer: { x: number; y: number };
   framePositions: Record<string, { x: number; y: number }>;
   before: FrameworkDocument;
+  dx: number;
+  dy: number;
   moved: boolean;
 }
 interface LayerResizeState {
@@ -851,6 +853,8 @@ export default function App() {
       startLayer: { x: layer.x, y: layer.y },
       framePositions,
       before: clone(frameworkRef.current),
+      dx: 0,
+      dy: 0,
       moved: false
     };
     setSelectedLayerId(layer.id);
@@ -878,27 +882,53 @@ export default function App() {
     const nextY = Math.max(8, drag.startLayer.y + rawDy);
     const dx = nextX - drag.startLayer.x;
     const dy = nextY - drag.startLayer.y;
+    drag.dx = dx;
+    drag.dy = dy;
     if (Math.abs(dx) + Math.abs(dy) > 1) drag.moved = true;
-    changeFramework(current => ({
-      ...current,
-      layers: (current.layers ?? []).map(layer => layer.id === drag.layerId ? { ...layer, x: nextX, y: nextY } : layer),
-      frames: current.frames.map(frame => {
-        const start = drag.framePositions[frame.id];
-        return start ? { ...frame, x: Math.max(8, start.x + dx), y: Math.max(8, start.y + dy) } : frame;
-      })
-    }), { save: false, record: false });
-  }, [changeFramework, scale]);
+
+    // Preview the transaction directly in the DOM. Committing React graph state
+    // on every pointer event can interrupt the active drag when the layer rerenders.
+    const layerElement = Array.from(document.querySelectorAll<HTMLElement>('[data-layer]'))
+      .find(element => element.dataset.layer === drag.layerId);
+    if (layerElement) layerElement.style.transform = `translate(${dx}px, ${dy}px)`;
+    for (const frameId of Object.keys(drag.framePositions)) {
+      const frameElement = Array.from(document.querySelectorAll<HTMLElement>('[data-frame]'))
+        .find(element => element.dataset.frame === frameId);
+      if (frameElement) frameElement.style.transform = `translate(${dx}px, ${dy}px)`;
+    }
+  }, [scale]);
 
   const onLayerHeaderPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const drag = layerDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     layerDragRef.current = null;
+
+    const layerElement = Array.from(document.querySelectorAll<HTMLElement>('[data-layer]'))
+      .find(element => element.dataset.layer === drag.layerId);
+    if (layerElement) layerElement.style.transform = '';
+    for (const frameId of Object.keys(drag.framePositions)) {
+      const frameElement = Array.from(document.querySelectorAll<HTMLElement>('[data-frame]'))
+        .find(element => element.dataset.frame === frameId);
+      if (frameElement) frameElement.style.transform = '';
+    }
+
     if (drag.moved) {
       recordHistory(drag.before, 'Move Layer');
-      persist(frameworkRef.current, 0);
+      changeFramework(current => ({
+        ...current,
+        layers: (current.layers ?? []).map(layer => layer.id === drag.layerId
+          ? { ...layer, x: Math.max(8, drag.startLayer.x + drag.dx), y: Math.max(8, drag.startLayer.y + drag.dy) }
+          : layer),
+        frames: current.frames.map(frame => {
+          const start = drag.framePositions[frame.id];
+          return start
+            ? { ...frame, x: Math.max(8, start.x + drag.dx), y: Math.max(8, start.y + drag.dy) }
+            : frame;
+        })
+      }), { record: false, label: 'Move Layer' });
     }
     playGraphClick('connect');
-  }, [persist, recordHistory]);
+  }, [changeFramework, recordHistory]);
 
   useEffect(() => {
     const onMove = (event: PointerEvent) => {
