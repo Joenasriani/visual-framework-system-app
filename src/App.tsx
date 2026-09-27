@@ -1582,7 +1582,7 @@ export default function App() {
   const executeAll = useCallback(async () => {
     setStatus('RUNNING');
     const running: FrameworkRun = {
-      id: `run-${Date.now()}`, frameworkId: frameworkRef.current.id, status: 'running', startedAt: new Date().toISOString(), activeFrameId: null, steps: []
+      id: `run-${Date.now()}`, frameworkId: frameworkRef.current.id, status: 'running', startedAt: new Date().toISOString(), activeFrameId: null, activeFrameIds: [], steps: []
     };
     setRun(running);
     const final = await runFramework(frameworkRef.current, event => setRun(event.run));
@@ -1887,7 +1887,7 @@ export default function App() {
                 const targetMotion = cableMotion?.frameId === target.id ? cableMotion : undefined;
                 const geometry = curveGeometry(start, end, sourceMotion, targetMotion);
                 const selected = selectedConnectionId === connection.id;
-                const executing = !semantic && run?.activeFrameId === target.id;
+                const executing = !semantic && Boolean(run?.activeFrameIds?.includes(target.id) || run?.activeFrameId === target.id);
                 const classes = ['connection-group', semantic ? 'semantic' : 'execution', selected ? 'selected' : '', newConnectionId === connection.id ? 'just-connected' : '', removingConnectionId === connection.id ? 'removing' : '', executing ? 'executing' : ''].filter(Boolean).join(' ');
                 return (
                   <g key={connection.id} className={classes}>
@@ -1920,7 +1920,7 @@ export default function App() {
             <div className="frames">
               {visibleFrames.map(frame => {
                 const step = stepMap.get(frame.id);
-                const active = run?.activeFrameId === frame.id;
+                const active = Boolean(run?.activeFrameIds?.includes(frame.id) || run?.activeFrameId === frame.id);
                 const selected = selectedFrameIds.includes(frame.id);
                 const body = active ? 'Responding…' : framePlainExplanation(frame);
                 const meta = active ? 'RESPONDING' : step?.status === 'error' ? 'STOPPED' : frame.epistemicState ? stateLabel(frame.epistemicState) : 'UNASSESSED';
