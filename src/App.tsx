@@ -2128,46 +2128,42 @@ function RelationshipLibraryInspector({ selectedCount, onConnect, onClose }: {
   onClose: () => void;
 }) {
   return <>
-    <div className="inspector-head"><div><span>RELATIONSHIP LIBRARY</span><strong>Human Sciences</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
+    <div className="inspector-head"><div><span>CONNECTIONS</span><strong>How are these related?</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
     <p className="proposal-summary">
-      Choose what the connection means. Select exactly two elements to create a relationship from the first selected element to the second.
+      Select two items, then choose what the first one means to the second.
     </p>
-    {selectedCount !== 2 && <p className="empty-copy">Select exactly two elements to connect them. You can still inspect the relationship vocabulary below.</p>}
+    {selectedCount !== 2 && <p className="empty-copy">Select exactly two items first. You can still look through the connection choices below.</p>}
     {RELATIONSHIP_CATEGORIES.map(category => (
       <div className="order-block" key={category}>
-        <span>{category}</span>
+        <span>{RELATIONSHIP_CATEGORY_LABELS[category]}</span>
         <div className="order-list">
           {RELATIONSHIP_PRESETS.filter(preset => preset.category === category).map(preset => (
             <button
               key={preset.meaning}
-              title={preset.technical}
+              title={preset.label}
               disabled={selectedCount !== 2}
               onClick={() => onConnect(preset.meaning)}
             >
-              {preset.label} · {preset.technical}
+              {preset.label}
             </button>
           ))}
         </div>
       </div>
     ))}
-    <div className="hierarchy-block">
-      <span>Scientific precision</span>
-      <p>Moderation, mediation, reinforcement, temporal precedence, priming, diffusion, contagion, mobilization and similar mechanisms are not collapsed into these relationships. They should be added only when VFA has distinct underlying relationship types for them.</p>
-    </div>
   </>;
 }
 
 function ElementLibraryInspector({ onAdd, onClose }: { onAdd: (presetId: string) => void; onClose: () => void }) {
   return <>
-    <div className="inspector-head"><div><span>ELEMENT LIBRARY</span><strong>Human Sciences</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
-    <p className="proposal-summary">Choose what the element represents. The plain-language label comes first; the professional term follows it. These are presets over the existing VFA graph, not new engine types.</p>
+    <div className="inspector-head"><div><span>ADD SOMETHING</span><strong>Choose an item</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
+    <p className="proposal-summary">Choose the kind of thing you want to put on the canvas. You can rename it after adding it.</p>
     {ELEMENT_CATEGORIES.map(category => (
       <div className="order-block" key={category}>
-        <span>{category}</span>
+        <span>{ELEMENT_CATEGORY_LABELS[category]}</span>
         <div className="order-list">
           {ELEMENT_PRESETS.filter(preset => preset.category === category).map(preset => (
-            <button key={preset.id} title={preset.technical} onClick={() => onAdd(preset.id)}>
-              {preset.label} · {preset.technical}
+            <button key={preset.id} title={ELEMENT_EXPLANATIONS[preset.id] ?? preset.label} onClick={() => onAdd(preset.id)}>
+              {preset.label} · {ELEMENT_EXPLANATIONS[preset.id] ?? ''}
             </button>
           ))}
         </div>
@@ -2189,24 +2185,26 @@ function FrameInspector({ frame, step, selectedCount, childCount, onClose, onCha
   onRelease: () => void;
   onToggleCollapse: () => void;
 }) {
-  const bodyLabel = { asset: 'Content', instruction: 'Instruction', expression: 'Rule', check: 'Test', output: 'Finding' }[frame.kind];
+  const bodyLabel = { asset: 'Content', instruction: 'Instruction', expression: 'Rule', check: 'Check', output: 'Result' }[frame.kind];
+  const roleOptions: FrameRole[] = [...new Set<FrameRole>([frame.role ?? 'concept', ...ROLES])];
+  const stateOptions: EpistemicState[] = [...new Set<EpistemicState>([frame.epistemicState ?? 'unknown', ...STATES])];
   return <>
     <div className="inspector-head"><div><span>ELEMENT</span><strong>{frame.title}</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
     <label className="field"><span>Name</span><input value={frame.title} onChange={(event: React.ChangeEvent<HTMLInputElement>) => onChange({ title: event.target.value })} /></label>
     <div className="dual-field">
-      <label className="field"><span>Element Type</span><select value={frame.role ?? 'concept'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ role: event.target.value as FrameRole })}>{ROLES.map(role => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
-      <label className="field"><span>Status</span><select value={frame.epistemicState ?? 'unknown'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ epistemicState: event.target.value as EpistemicState })}>{STATES.map(state => <option key={state} value={state}>{stateLabel(state)}</option>)}</select></label>
+      <label className="field"><span>This is a</span><select value={frame.role ?? 'concept'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ role: event.target.value as FrameRole })}>{roleOptions.map(role => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
+      <label className="field"><span>Status</span><select value={frame.epistemicState ?? 'unknown'} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange({ epistemicState: event.target.value as EpistemicState })}>{stateOptions.map(state => <option key={state} value={state}>{stateLabel(state)}</option>)}</select></label>
     </div>
     {frame.kind === 'instruction' && <div className="order-block"><span>Methods</span><div className="order-list">{FRAME_ORDERS.map(order => <button key={order.id} className={frame.orderPreset === order.id ? 'active' : ''} onClick={() => onChange({ title: order.title, body: order.prompt, operation: 'MODEL', orderPreset: order.id })}>{order.title}</button>)}</div></div>}
     {frame.kind !== 'output' && <label className="field"><span>{bodyLabel}</span><textarea value={String(frame.kind === 'asset' ? frame.value ?? '' : frame.body)} onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => frame.kind === 'asset' ? onChange({ value: event.target.value }) : onChange({ body: event.target.value, orderPreset: '' })} /></label>}
-    <div className="seg-field"><span>Response</span><div className="seg"><button className={frame.operation === 'DETERMINISTIC' ? 'active' : ''} onClick={() => onChange({ operation: 'DETERMINISTIC' })}>Direct</button><button className={frame.operation === 'MODEL' ? 'active' : ''} onClick={() => onChange({ operation: 'MODEL', body: frame.body || `Respond using ${frame.title} as the active perspective.` })}>External Response System</button></div></div>
+    <div className="seg-field"><span>How it works</span><div className="seg"><button className={frame.operation === 'DETERMINISTIC' ? 'active' : ''} onClick={() => onChange({ operation: 'DETERMINISTIC' })}>Use as written</button><button className={frame.operation === 'MODEL' ? 'active' : ''} onClick={() => onChange({ operation: 'MODEL', body: frame.body || `Respond using ${frame.title} as the active perspective.` })}>Ask AI</button></div></div>
     {frame.kind === 'asset' && frame.operation === 'MODEL' && <label className="field"><span>Instruction</span><textarea value={frame.body} onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => onChange({ body: event.target.value, orderPreset: '' })} /></label>}
     {frame.kind === 'expression' && <div className="seg-field"><span>Use As</span><div className="seg"><button className={frame.expressionClass === 'EXECUTABLE' ? 'active' : ''} onClick={() => onChange({ expressionClass: 'EXECUTABLE' })}>Active Rule</button><button className={frame.expressionClass === 'DESCRIPTIVE' ? 'active' : ''} onClick={() => onChange({ expressionClass: 'DESCRIPTIVE' })}>Descriptive Note</button></div></div>}
     <div className="hierarchy-block"><span>Structure</span><p>{frame.parentId ? 'Inside another element.' : 'Top level element.'}{childCount ? ` Contains ${childCount}.` : ''}</p>{selectedCount > 1 && <button onClick={onContain}>Group selection inside active element</button>}{frame.parentId && <button onClick={onRelease}>Move out of group</button>}{childCount > 0 && <button onClick={onToggleCollapse}>{frame.collapsed ? 'Show contained elements' : 'Hide contained elements'}</button>}</div>
     <div className="io-block"><span>Relationships</span>{[...frame.inputs.map(port => `Receives · ${port.name}`), ...frame.outputs.map(port => `Leads to · ${port.name}`)].map(text => <code key={text}>{text}</code>)}</div>
-    <div className="provenance-block"><span>Origin</span><b>{label(frame.provenance?.origin ?? 'user')}</b>{frame.provenance?.source && <small>{frame.provenance.source}</small>}</div>
-    <div className="trace-block"><span>Last run</span>{step ? <><b className={`trace-state trace-${step.status}`}>{step.status === 'ok' ? 'DONE' : 'ERROR'}</b><dl><dt>Received</dt><dd>{short(step.input, 180)}</dd><dt>Instruction</dt><dd>{frame.body || 'Direct response'}</dd><dt>Produced</dt><dd>{short(step.output, 180)}</dd><dt>Response</dt><dd>{step.executor === 'MODEL' ? 'External Response System' : 'Direct'}</dd>{step.error && <><dt>Error</dt><dd>{step.error}</dd></>}</dl></> : <em>Not run</em>}</div>
-    <button className="inspector-run" onClick={onRun}>Run This Node</button>
+    <div className="provenance-block"><span>Added by</span><b>{label(frame.provenance?.origin ?? 'user')}</b>{frame.provenance?.source && <small>{frame.provenance.source}</small>}</div>
+    <div className="trace-block"><span>Last run</span>{step ? <><b className={`trace-state trace-${step.status}`}>{step.status === 'ok' ? 'DONE' : 'ERROR'}</b><dl><dt>Input</dt><dd>{short(step.input, 180)}</dd><dt>Instruction</dt><dd>{frame.body || 'Direct response'}</dd><dt>Result</dt><dd>{short(step.output, 180)}</dd><dt>Method</dt><dd>{step.executor === 'MODEL' ? 'AI' : 'Direct'}</dd>{step.error && <><dt>Error</dt><dd>{step.error}</dd></>}</dl></> : <em>Not run</em>}</div>
+    <button className="inspector-run" onClick={onRun}>Run This Item</button>
     <button className="delete-btn" onClick={onDelete}>Delete</button>
   </>;
 }
@@ -2244,7 +2242,7 @@ function RunsInspector({ runs, activeRun, onSelect, onClose }: { runs: Framework
 function FrameworkInspector({ framework, pendingProposals, transformations, onOpenProposal, onOpenIssues, onOpenRuns }: { framework: FrameworkDocument; pendingProposals: number; transformations: number; onOpenProposal: () => void; onOpenIssues: () => void; onOpenRuns: () => void }) {
   return <div className="framework-inspector">
     <div className="inspector-head"><div><span>FRAMEWORK</span><strong>{framework.name}</strong></div></div>
-    <dl><dt>Goal</dt><dd>{label(framework.goal ?? 'understand')}</dd><dt>Version</dt><dd>{framework.version ?? 1}</dd><dt>Elements</dt><dd>{framework.frames.length}</dd><dt>Relationships</dt><dd>{framework.connections.length}</dd><dt>Changes</dt><dd>{transformations}</dd></dl>
+    <dl><dt>Goal</dt><dd>{GOAL_LABELS[framework.goal ?? 'understand']}</dd><dt>Version</dt><dd>{framework.version ?? 1}</dd><dt>Items</dt><dd>{framework.frames.length}</dd><dt>Connections</dt><dd>{framework.connections.length}</dd><dt>Changes</dt><dd>{transformations}</dd></dl>
     {pendingProposals > 0 && <button className="panel-action" onClick={onOpenProposal}>Review Suggested Change</button>}
     <button className="panel-action" onClick={onOpenIssues}>Inspect Checks</button>
     <button className="panel-action" onClick={onOpenRuns}>Inspect Runs</button>
