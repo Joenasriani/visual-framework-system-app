@@ -1,4 +1,4 @@
-name: Live MVP Acceptance
+name: Production MVP Acceptance
 
 on:
   workflow_dispatch:
@@ -9,7 +9,8 @@ on:
       - 'e2e/complete.mjs'
       - '.github/workflows/live-mvp.yml'
 
-# Final acceptance includes deterministic offline shell verification.
+# Production smoke/acceptance only.
+# Current source correctness is proven separately in build.yml against the checked-out commit.
 jobs:
   live:
     runs-on: ubuntu-latest
@@ -24,7 +25,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: node e2e/live.mjs
         env:
-          LIVE_URL: https://visual-framework-system.vercel.app
+          LIVE_URL: https://visual-framework-app.vercel.app
       - run: node e2e/complete.mjs
         env:
-          LIVE_URL: https://visual-framework-system.vercel.app
+          LIVE_URL: https://visual-framework-app.vercel.app
