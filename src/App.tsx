@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { compatible, runFramework, runSingleFrame, validateFramework } from './domain/engine';
+import { compatible, rerunAffectedFramework, runFramework, runSingleFrame, validateFramework } from './domain/engine';
 import { lintFramework } from './domain/linter';
+import { applyChainPlan, buildChainPlan } from './domain/chains';
+import type { ChainPlan } from './domain/chains';
 import { FRAME_ORDERS } from './domain/orders';
+import { parseFrameworkExport, serializeFramework } from './domain/portable';
 import { createSeedFramework, FRAME_HEIGHT, FRAME_WIDTH } from './domain/seed';
 import {
   applyProposal,
@@ -11,6 +14,7 @@ import {
   requestStructuralProposal
 } from './domain/structural';
 import type {
+  ChainType,
   EpistemicState,
   Frame,
   FrameKind,
@@ -61,6 +65,22 @@ const STRUCTURAL_OPERATIONS: Array<[StructuralOperation, string]> = [
   ['identify-assumption','Find Assumptions'],
   ['find-contradiction','Find Conflicts'],
   ['compress','Condense']
+];
+
+const DAG_CHAIN_TYPES: Array<[ChainType, string]> = [
+  ['sequence', 'Sequence'],
+  ['branch', 'Branch'],
+  ['merge', 'Merge'],
+  ['diamond', 'Diamond'],
+  ['parallel', 'Parallel Paths'],
+  ['hierarchy', 'Hierarchy'],
+  ['contain', 'Contain'],
+  ['nested', 'Nested'],
+  ['nested-branch', 'Nested Branch'],
+  ['cascade', 'Cascade'],
+  ['gate', 'Multi-input Gate'],
+  ['network', 'Network'],
+  ['freeform', 'Freeform']
 ];
 
 const ROLE_LABELS: Partial<Record<FrameRole, string>> = {
@@ -468,6 +488,7 @@ export default function App() {
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const [portFeedback, setPortFeedback] = useState<{ frameId: string; portId: string; kind: 'connect' | 'detach' } | null>(null);
   const [run, setRun] = useState<FrameworkRun | null>(null);
+  const [dirtyExecutionFrameIds, setDirtyExecutionFrameIds] = useState<string[]>([]);
   const [runs, setRuns] = useState<FrameworkRun[]>([]);
   const [status, setStatus] = useState('READY');
   const [scale, setScale] = useState(1);
@@ -482,12 +503,15 @@ export default function App() {
   const [relationshipPickMode, setRelationshipPickMode] = useState(false);
   const [scopeMode, setScopeMode] = useState<ScopeMode>('frame');
   const [relationshipMeaning, setRelationshipMeaning] = useState<RelationshipMeaning>('supports');
+  const [chainType, setChainType] = useState<ChainType>('sequence');
+  const [chainPreview, setChainPreview] = useState<ChainPlan | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const layerDragRef = useRef<LayerDragState | null>(null);
   const layerResizeRef = useRef<LayerResizeState | null>(null);
   const panRef = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
   const persistTimer = useRef<number | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const clipboardRef = useRef<ClipboardState | null>(null);
   const pastRef = useRef<Array<{ doc: FrameworkDocument; label: string }>>([]);
   const futureRef = useRef<Array<{ doc: FrameworkDocument; label: string }>>([]);
@@ -597,6 +621,21 @@ export default function App() {
   const lintIssues = useMemo(() => lintFramework(framework), [framework]);
   const executionIssues = useMemo(() => validateFramework(framework), [framework]);
   const activeProposal = useMemo(() => [...(framework.proposals ?? [])].reverse().find(item => item.status === 'pending') ?? null, [framework.proposals]);
+  const staleExecutionFrameIds = useMemo(() => {
+    const stale = new Set(dirtyExecutionFrameIds);
+    const queue = [...dirtyExecutionFrameIds];
+    while (queue.length) {
+      const current = queue.shift()!;
+      for (const connection of framework.connections) {
+        if (connection.kind === 'semantic' || connection.fromFrame !== current) continue;
+        if (!stale.has(connection.toFrame)) {
+          stale.add(connection.toFrame);
+          queue.push(connection.toFrame);
+        }
+      }
+    }
+    return stale;
+  }, [dirtyExecutionFrameIds, framework.connections]);
 
   const hiddenIds = useMemo(() => {
     const hidden = new Set<string>();
@@ -708,7 +747,11 @@ export default function App() {
       version: (current.version ?? 1) + (record ? 1 : 0),
       frames: current.frames.map(frame => frame.id === frameId ? { ...frame, ...patch } : frame)
     }), { record, label: 'Edit Frame' });
-    setRun(null);
+    const executionKeys = new Set<keyof Frame>(['title', 'operation', 'body', 'value', 'expressionClass', 'inputs', 'outputs']);
+    if (Object.keys(patch).some(key => executionKeys.has(key as keyof Frame))) {
+      setDirtyExecutionFrameIds(current => current.includes(frameId) ? current : [...current, frameId]);
+      setStatus('CHANGED');
+    }
   }, [changeFramework]);
 
   const addElementPreset = useCallback((presetId: string) => {
@@ -1503,6 +1546,32 @@ export default function App() {
     return { kind: 'frame', frameIds: selectedFrameId ? [selectedFrameId] : frameworkRef.current.frames.slice(0, 1).map(frame => frame.id) };
   }, [branchIds, scopeMode, selectedFrameId, selectedFrameIds]);
 
+  const previewSelectedChain = useCallback(() => {
+    try {
+      setChainPreview(buildChainPlan(chainType, selectedFrameIds));
+      setStatus('CHAIN PREVIEW');
+    } catch (error) {
+      console.error(error);
+      setChainPreview(null);
+      setStatus('INVALID');
+      window.setTimeout(() => setStatus(current => current === 'INVALID' ? 'READY' : current), 800);
+    }
+  }, [chainType, selectedFrameIds]);
+
+  const applySelectedChain = useCallback(() => {
+    if (!chainPreview) return;
+    changeFramework(current => applyChainPlan(current, chainPreview), { label: `Apply ${label(chainPreview.type)} Chain` });
+    setChainPreview(null);
+    setRun(null);
+    setDirtyExecutionFrameIds([]);
+    setStatus('READY');
+  }, [chainPreview, changeFramework]);
+
+  const cancelChainPreview = useCallback(() => {
+    setChainPreview(null);
+    setStatus(current => current === 'CHAIN PREVIEW' ? 'READY' : current);
+  }, []);
+
   const runStructuralOperation = useCallback(async (operation: StructuralOperation) => {
     setStatus('THINKING');
     try {
@@ -1581,16 +1650,32 @@ export default function App() {
 
   const executeAll = useCallback(async () => {
     setStatus('RUNNING');
+    const previousRun = run;
+    const canReuse = Boolean(
+      previousRun &&
+      previousRun.status === 'ok' &&
+      previousRun.frameworkId === frameworkRef.current.id &&
+      dirtyExecutionFrameIds.length
+    );
     const running: FrameworkRun = {
-      id: `run-${Date.now()}`, frameworkId: frameworkRef.current.id, status: 'running', startedAt: new Date().toISOString(), activeFrameId: null, steps: []
+      id: `run-${Date.now()}`,
+      frameworkId: frameworkRef.current.id,
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      activeFrameId: null,
+      activeFrameIds: [],
+      steps: canReuse ? previousRun?.steps ?? [] : []
     };
     setRun(running);
-    const final = await runFramework(frameworkRef.current, event => setRun(event.run));
+    const final = canReuse && previousRun
+      ? await rerunAffectedFramework(frameworkRef.current, dirtyExecutionFrameIds, previousRun, event => setRun(event.run))
+      : await runFramework(frameworkRef.current, event => setRun(event.run));
+    if (final.status === 'ok') setDirtyExecutionFrameIds([]);
     setRun(final);
     setStatus(final.status === 'ok' ? 'PASSED' : 'STOPPED');
     await saveRun(final).catch(() => undefined);
     setRuns(await listRuns(frameworkRef.current.id).catch(() => []));
-  }, []);
+  }, [dirtyExecutionFrameIds, run]);
 
   const switchFramework = useCallback(async (id: string) => {
     if (id === frameworkRef.current.id) return;
@@ -1603,6 +1688,8 @@ export default function App() {
     setSelectedConnectionId(null);
     setSelectedLayerId(null);
     setRun(null);
+    setDirtyExecutionFrameIds([]);
+    setChainPreview(null);
     setScale(1);
     pastRef.current = [];
     futureRef.current = [];
@@ -1610,6 +1697,51 @@ export default function App() {
     setSideMode('framework');
     await refreshLists(next.id);
   }, [refreshLists]);
+
+  const exportCurrentFramework = useCallback(() => {
+    const payload = serializeFramework(frameworkRef.current);
+    const blob = new Blob([payload], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const safeName = (frameworkRef.current.name || 'framework').trim().replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'framework';
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${safeName}.vfa.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    setStatus('EXPORTED');
+    window.setTimeout(() => setStatus(current => current === 'EXPORTED' ? 'READY' : current), 700);
+  }, []);
+
+  const importFrameworkFile = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const imported = parseFrameworkExport(await file.text());
+      await saveFramework(frameworkRef.current).catch(() => undefined);
+      recordHistory(frameworkRef.current, 'Import Framework');
+      await saveFramework(imported);
+      await setActiveFrameworkId(imported.id);
+      frameworkRef.current = imported;
+      setFramework(imported);
+      setSelectedFrameIds(imported.frames[0]?.id ? [imported.frames[0].id] : []);
+      setSelectedConnectionId(null);
+      setSelectedLayerId(null);
+      setRun(null);
+      setDirtyExecutionFrameIds([]);
+      setScale(1);
+      setCableMotion(null);
+      setSideMode('framework');
+      setStatus('IMPORTED');
+      await refreshLists(imported.id);
+      window.setTimeout(() => setStatus(current => current === 'IMPORTED' ? 'READY' : current), 900);
+    } catch (error) {
+      console.error(error);
+      setStatus('IMPORT ERROR');
+    }
+  }, [recordHistory, refreshLists]);
 
   const reset = useCallback(() => {
     const seed = createSeedFramework();
@@ -1620,6 +1752,8 @@ export default function App() {
     setSelectedConnectionId(null);
     setSelectedLayerId(null);
     setRun(null);
+    setDirtyExecutionFrameIds([]);
+    setChainPreview(null);
     setScale(1);
     setCableMotion(null);
     setStatus('READY');
@@ -1685,6 +1819,7 @@ export default function App() {
         wireRef.current = null;
         setWire(null);
         setRelationshipPickMode(false);
+        setChainPreview(null);
         setPanelOpen(false);
         setStatus('READY');
       }
@@ -1759,6 +1894,9 @@ export default function App() {
           <button className="text-btn secondary-top-action" onClick={redo} disabled={!futureRef.current.length}>Redo</button>
           <button className="text-btn secondary-top-action" onClick={() => openPanel('issues')}>Checks {lintIssues.length + executionIssues.length}</button>
           <button className="text-btn secondary-top-action" onClick={() => openPanel('runs')}>Runs {runs.length}</button>
+          <button className="text-btn secondary-top-action" onClick={exportCurrentFramework}>Export</button>
+          <button className="text-btn secondary-top-action" onClick={() => importInputRef.current?.click()}>Import</button>
+          <input ref={importInputRef} data-framework-import type="file" accept=".json,.vfa.json,application/json" hidden onChange={event => void importFrameworkFile(event)} />
           <button className="text-btn secondary-top-action" onClick={reset}>Reset</button>
           <button className="run-button" onClick={() => void executeAll()} disabled={status === 'RUNNING' || status === 'THINKING'}><span>Run</span><kbd>⌘R</kbd></button>
         </div>
@@ -1799,6 +1937,16 @@ export default function App() {
             </>}
             {selectedFrameIds.length !== 2 && <button className="quiet-action relationship-action" onClick={() => openPanel('relationships')}>Relationships</button>}
             {selectedFrame && <button className="quiet-action inspect-action" onClick={() => openPanel('frame')}>Inspect</button>}
+            {selectedFrameIds.length >= 2 && <>
+              <select className="chain-select" value={chainType} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => { setChainType(event.target.value as ChainType); setChainPreview(null); setStatus('READY'); }}>
+                {DAG_CHAIN_TYPES.map(([type, name]) => <option key={type} value={type}>{name}</option>)}
+              </select>
+              <button className="quiet-action chain-action" onClick={previewSelectedChain}>Preview Chain</button>
+            </>}
+            {chainPreview && <>
+              <button className="quiet-action chain-apply" onClick={applySelectedChain}>Apply Chain</button>
+              <button className="quiet-action chain-cancel" onClick={cancelChainPreview}>Cancel</button>
+            </>}
             <button className="quiet-action layer-action" onClick={createLayer}>{selectedFrameIds.length ? 'Layer Selection' : 'New Layer'}</button>
             {selectedLayer && <button className="quiet-action layer-delete-action" onClick={() => deleteLayer(selectedLayer.id)}>Delete Layer</button>}
             <button className="quiet-action fit-action" onClick={fitView}>Fit</button>
@@ -1887,7 +2035,7 @@ export default function App() {
                 const targetMotion = cableMotion?.frameId === target.id ? cableMotion : undefined;
                 const geometry = curveGeometry(start, end, sourceMotion, targetMotion);
                 const selected = selectedConnectionId === connection.id;
-                const executing = !semantic && run?.activeFrameId === target.id;
+                const executing = !semantic && Boolean(run?.activeFrameIds?.includes(target.id) || run?.activeFrameId === target.id);
                 const classes = ['connection-group', semantic ? 'semantic' : 'execution', selected ? 'selected' : '', newConnectionId === connection.id ? 'just-connected' : '', removingConnectionId === connection.id ? 'removing' : '', executing ? 'executing' : ''].filter(Boolean).join(' ');
                 return (
                   <g key={connection.id} className={classes}>
@@ -1917,20 +2065,32 @@ export default function App() {
               })}
             </svg>
 
+            {chainPreview && (
+              <svg className="chain-preview-connections" width={worldWidth} height={worldHeight} aria-label="Chain topology preview">
+                {chainPreview.links.map((link, index) => {
+                  const source = frameMap.get(link.fromFrame);
+                  const target = frameMap.get(link.toFrame);
+                  if (!source || !target) return null;
+                  const geometry = curveGeometry(semanticPoint(source, 'from'), semanticPoint(target, 'to'));
+                  return <path key={`${link.kind}-${link.fromFrame}-${link.toFrame}-${index}`} className={`chain-preview-link ${link.kind}`} d={geometry.d} />;
+                })}
+              </svg>
+            )}
+
             <div className="frames">
               {visibleFrames.map(frame => {
                 const step = stepMap.get(frame.id);
-                const active = run?.activeFrameId === frame.id;
+                const active = Boolean(run?.activeFrameIds?.includes(frame.id) || run?.activeFrameId === frame.id);
                 const selected = selectedFrameIds.includes(frame.id);
                 const body = active ? 'Responding…' : framePlainExplanation(frame);
-                const meta = active ? 'RESPONDING' : step?.status === 'error' ? 'STOPPED' : frame.epistemicState ? stateLabel(frame.epistemicState) : 'UNASSESSED';
+                const meta = active ? 'RESPONDING' : staleExecutionFrameIds.has(frame.id) ? 'CHANGED' : step?.reusedFromRunId ? 'REUSED' : step?.status === 'error' ? 'STOPPED' : frame.epistemicState ? stateLabel(frame.epistemicState) : 'UNASSESSED';
                 const children = childrenByParent.get(frame.id) ?? [];
                 const parent = frame.parentId ? frameMap.get(frame.parentId) : undefined;
                 return (
                   <div
                     key={frame.id}
                     data-frame={frame.id}
-                    className={`frame frame-${frame.kind}${selected ? ' selected' : ''}${active ? ' run-active' : ''}${step?.status === 'ok' ? ' run-ok' : ''}${step?.status === 'error' ? ' run-error' : ''}`}
+                    className={`frame frame-${frame.kind}${selected ? ' selected' : ''}${active ? ' run-active' : ''}${staleExecutionFrameIds.has(frame.id) ? ' run-stale' : ''}${step?.status === 'ok' && !staleExecutionFrameIds.has(frame.id) ? ' run-ok' : ''}${step?.status === 'error' && !staleExecutionFrameIds.has(frame.id) ? ' run-error' : ''}`}
                     style={{ width: FRAME_WIDTH, height: FRAME_HEIGHT, left: frame.x, top: frame.y }}
                     onPointerDown={event => onFramePointerDown(event, frame)}
                     onPointerMove={onFramePointerMove}
@@ -2190,7 +2350,7 @@ function RunsInspector({ runs, activeRun, onSelect, onClose }: { runs: Framework
     <div className="inspector-head"><div><span>FRAMEWORK</span><strong>Runs</strong></div><button className="close-inspector" onClick={onClose}>×</button></div>
     {!runs.length && <p className="empty-copy">No saved runs yet.</p>}
     <div className="run-list">{runs.map(item => <button key={item.id} className={activeRun?.id === item.id ? 'active' : ''} onClick={() => onSelect(item)}><span>{item.status.toUpperCase()}</span><strong>{new Date(item.startedAt).toLocaleString()}</strong><small>{item.steps.length} elements</small></button>)}</div>
-    {activeRun && <div className="run-detail"><span>Selected run</span>{activeRun.steps.map(step => <article key={step.frameId}><b>{step.frameId}</b><small>{step.status.toUpperCase()} · {step.durationMs}ms</small><p>{short(step.output ?? step.error, 220)}</p></article>)}</div>}
+    {activeRun && <div className="run-detail"><span>Selected run</span>{activeRun.steps.map(step => <article key={step.frameId}><b>{step.frameId}</b><small>{step.reusedFromRunId ? 'REUSED' : step.status.toUpperCase()} · {step.durationMs}ms</small><p>{short(step.output ?? step.error, 220)}</p></article>)}</div>}
   </>;
 }
 

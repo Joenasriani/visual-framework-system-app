@@ -3,6 +3,70 @@ export type OperationMode = 'DETERMINISTIC' | 'MODEL';
 export type ExpressionClass = 'EXECUTABLE' | 'DESCRIPTIVE';
 export type ValueType = 'text' | 'boolean' | 'number' | 'json' | 'any';
 
+export type ExecutionMode =
+  | 'auto'
+  | 'sequential'
+  | 'parallel'
+  | 'ordered-parallel'
+  | 'conditional'
+  | 'manual'
+  | 'iterative'
+  | 'feedback';
+
+export type ChainType =
+  | 'sequence'
+  | 'branch'
+  | 'merge'
+  | 'diamond'
+  | 'parallel'
+  | 'hierarchy'
+  | 'contain'
+  | 'nested'
+  | 'nested-branch'
+  | 'cascade'
+  | 'conditional'
+  | 'gate'
+  | 'reciprocal'
+  | 'feedback'
+  | 'network'
+  | 'recursive-framework'
+  | 'freeform';
+
+export type InstructionFragmentState = 'active' | 'masked' | 'subtracted' | 'replaced';
+
+export interface InstructionFragment {
+  id: string;
+  text: string;
+  state: InstructionFragmentState;
+  replacement?: string;
+  createdAt?: string;
+  createdBy?: ProvenanceOrigin;
+}
+
+export interface GeneratedClaim {
+  id: string;
+  text: string;
+  sourceFrameId?: string;
+}
+
+export interface Chain {
+  id: string;
+  name: string;
+  type: ChainType;
+  frameIds: string[];
+  connectionIds: string[];
+  executionMode: ExecutionMode;
+  createdAt: string;
+  collapsed?: boolean;
+  parentChainId?: string;
+}
+
+export interface DependencyMetadata {
+  fingerprint?: string;
+  dependsOnFrameIds?: string[];
+  dependsOnFragmentIds?: string[];
+}
+
 export type FrameRole =
   | 'concept'
   | 'claim'
@@ -47,6 +111,13 @@ export interface Provenance {
   source?: string;
   runId?: string;
   frameId?: string;
+  model?: string;
+  operation?: string;
+  parentRunId?: string;
+  contextScope?: string;
+  sourceRefs?: string[];
+  manualModifications?: string[];
+  executionVersion?: string;
 }
 
 export interface Port {
@@ -63,6 +134,7 @@ export interface Frame {
   provenance?: Provenance;
   title: string;
   operation: OperationMode;
+  executionMode?: ExecutionMode;
   x: number;
   y: number;
   inputs: Port[];
@@ -74,6 +146,13 @@ export interface Frame {
   parentId?: string;
   collapsed?: boolean;
   layerId?: string;
+  subFrameworkId?: string;
+  assumptions?: string[];
+  contextScope?: string;
+  sourceRefs?: string[];
+  generatedClaims?: GeneratedClaim[];
+  instructionFragments?: InstructionFragment[];
+  dependency?: DependencyMetadata;
 }
 
 export interface Layer {
@@ -117,6 +196,12 @@ export interface Connection {
   kind?: ConnectionKind;
   meaning?: RelationshipMeaning;
   provenance?: Provenance;
+  chainId?: string;
+  reason?: string;
+  trigger?: string;
+  confidence?: number;
+  condition?: string;
+  feedback?: boolean;
 }
 
 export type FrameworkGoal = 'understand' | 'explain' | 'decide' | 'invent' | 'research' | 'compare' | 'challenge';
@@ -163,6 +248,7 @@ export interface FrameworkDocument {
   frames: Frame[];
   connections: Connection[];
   layers?: Layer[];
+  chains?: Chain[];
   goal?: FrameworkGoal;
   proposals?: Proposal[];
   transformations?: TransformationRecord[];
@@ -179,6 +265,7 @@ export interface RunStep {
   durationMs: number;
   executor?: OperationMode;
   provenance?: Provenance;
+  reusedFromRunId?: string;
 }
 
 export interface FrameworkRun {
@@ -188,6 +275,7 @@ export interface FrameworkRun {
   startedAt: string;
   endedAt?: string;
   activeFrameId?: string | null;
+  activeFrameIds?: string[];
   steps: RunStep[];
 }
 

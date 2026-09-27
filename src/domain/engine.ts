@@ -40,7 +40,7 @@ export function validateFramework(framework: FrameworkDocument): string[] {
   return errors;
 }
 
-function topologicalOrder(framework: FrameworkDocument): Frame[] {
+function executionBatches(framework: FrameworkDocument): Frame[][] {
   const connections = executionConnections(framework);
   const indegree = new Map(framework.frames.map(frame => [frame.id, 0]));
   const next = new Map<string, string[]>();
@@ -50,19 +50,29 @@ function topologicalOrder(framework: FrameworkDocument): Frame[] {
     next.set(connection.fromFrame, [...(next.get(connection.fromFrame) ?? []), connection.toFrame]);
   }
 
-  const queue = framework.frames.filter(frame => (indegree.get(frame.id) ?? 0) === 0).map(frame => frame.id);
-  const ordered: Frame[] = [];
-  while (queue.length) {
-    const id = queue.shift()!;
-    const frame = frameById(framework, id);
-    if (frame) ordered.push(frame);
-    for (const target of next.get(id) ?? []) {
-      indegree.set(target, (indegree.get(target) ?? 1) - 1);
-      if (indegree.get(target) === 0) queue.push(target);
+  let ready = framework.frames.filter(frame => (indegree.get(frame.id) ?? 0) === 0).map(frame => frame.id);
+  const batches: Frame[][] = [];
+  let visited = 0;
+
+  while (ready.length) {
+    const currentIds = ready;
+    const currentSet = new Set(currentIds);
+    const batch = framework.frames.filter(frame => currentSet.has(frame.id));
+    batches.push(batch);
+    visited += batch.length;
+
+    const newlyReady = new Set<string>();
+    for (const id of currentIds) {
+      for (const target of next.get(id) ?? []) {
+        indegree.set(target, (indegree.get(target) ?? 1) - 1);
+        if (indegree.get(target) === 0) newlyReady.add(target);
+      }
     }
+    ready = framework.frames.filter(frame => newlyReady.has(frame.id)).map(frame => frame.id);
   }
-  if (ordered.length !== framework.frames.length) throw new Error('Cycle detected');
-  return ordered;
+
+  if (visited !== framework.frames.length) throw new Error('Cycle detected');
+  return batches;
 }
 
 function evaluateExpression(body: string, input: unknown): unknown {
@@ -110,6 +120,25 @@ function runId() {
   return `run-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 }
 
+function downstreamExecutionFrameIds(framework: FrameworkDocument, roots: string[]): Set<string> {
+  const connections = executionConnections(framework);
+  const next = new Map<string, string[]>();
+  for (const connection of connections) {
+    next.set(connection.fromFrame, [...(next.get(connection.fromFrame) ?? []), connection.toFrame]);
+  }
+  const found = new Set<string>();
+  const queue = roots.filter(id => framework.frames.some(frame => frame.id === id));
+  while (queue.length) {
+    const id = queue.shift()!;
+    if (found.has(id)) continue;
+    found.add(id);
+    for (const target of next.get(id) ?? []) {
+      if (!found.has(target)) queue.push(target);
+    }
+  }
+  return found;
+}
+
 function stepProvenance(runIdValue: string, frame: Frame) {
   return {
     origin: frame.operation === 'MODEL' ? 'model' as const : 'deterministic' as const,
@@ -125,7 +154,7 @@ export async function runFramework(
 ): Promise<FrameworkRun> {
   const startedAt = new Date().toISOString();
   const run: FrameworkRun = {
-    id: runId(), frameworkId: framework.id, status: 'running', startedAt, activeFrameId: null, steps: []
+    id: runId(), frameworkId: framework.id, status: 'running', startedAt, activeFrameId: null, activeFrameIds: [], steps: []
   };
 
   const validation = validateFramework(framework);
@@ -135,58 +164,83 @@ export async function runFramework(
     run.steps = validation.map((error, index) => ({
       frameId: `validation-${index}`, status: 'error', input: null, error, durationMs: 0, executor: 'DETERMINISTIC'
     }));
-    onEvent?.({ type: 'run-completed', run: { ...run } });
+    onEvent?.({ type: 'run-completed', run: { ...run, activeFrameIds: [], steps: [...run.steps] } });
     return run;
   }
 
-  let ordered: Frame[];
+  let batches: Frame[][];
   try {
-    ordered = topologicalOrder(framework);
+    batches = executionBatches(framework);
   } catch (error) {
     run.status = 'error';
     run.endedAt = new Date().toISOString();
     run.steps = [{ frameId: 'graph', status: 'error', input: null, error: error instanceof Error ? error.message : 'Cycle detected', durationMs: 0, executor: 'DETERMINISTIC' }];
-    onEvent?.({ type: 'run-completed', run: { ...run } });
+    onEvent?.({ type: 'run-completed', run: { ...run, activeFrameIds: [], steps: [...run.steps] } });
     return run;
   }
 
   const outputs = new Map<string, unknown>();
   const connections = executionConnections(framework);
-  for (const frame of ordered) {
-    const input = gatheredInput(connections, outputs, frame.id);
-    run.activeFrameId = frame.id;
-    onEvent?.({ type: 'frame-started', frameId: frame.id, run: { ...run, steps: [...run.steps] } });
-    const started = performance.now();
-    try {
-      const output = await executeFrameOperation(frame, input);
-      outputs.set(frame.id, output);
-      const step: RunStep = {
+
+  for (const batch of batches) {
+    const activeIds = batch.map(frame => frame.id);
+    run.activeFrameIds = activeIds;
+    run.activeFrameId = activeIds.length === 1 ? activeIds[0] : null;
+
+    for (const frame of batch) {
+      onEvent?.({
+        type: 'frame-started',
         frameId: frame.id,
-        status: 'ok',
-        input,
-        output,
-        durationMs: +(performance.now() - started).toFixed(2),
-        executor: frame.operation,
-        provenance: stepProvenance(run.id, frame)
-      };
-      run.steps = [...run.steps, step];
-      run.activeFrameId = null;
-      onEvent?.({ type: 'frame-completed', frameId: frame.id, run: { ...run, steps: [...run.steps] } });
-    } catch (error) {
-      const step: RunStep = {
-        frameId: frame.id,
-        status: 'error',
-        input,
-        error: error instanceof Error ? error.message : 'Execution failed',
-        durationMs: +(performance.now() - started).toFixed(2),
-        executor: frame.operation,
-        provenance: stepProvenance(run.id, frame)
-      };
-      run.steps = [...run.steps, step];
-      run.activeFrameId = null;
+        run: { ...run, activeFrameIds: [...activeIds], steps: [...run.steps] }
+      });
+    }
+
+    const results = await Promise.all(batch.map(async frame => {
+      const input = gatheredInput(connections, outputs, frame.id);
+      const started = performance.now();
+      try {
+        const output = await executeFrameOperation(frame, input);
+        const step: RunStep = {
+          frameId: frame.id,
+          status: 'ok',
+          input,
+          output,
+          durationMs: +(performance.now() - started).toFixed(2),
+          executor: frame.operation,
+          provenance: stepProvenance(run.id, frame)
+        };
+        return { frame, step, output };
+      } catch (error) {
+        const step: RunStep = {
+          frameId: frame.id,
+          status: 'error',
+          input,
+          error: error instanceof Error ? error.message : 'Execution failed',
+          durationMs: +(performance.now() - started).toFixed(2),
+          executor: frame.operation,
+          provenance: stepProvenance(run.id, frame)
+        };
+        return { frame, step, output: undefined };
+      }
+    }));
+
+    for (const result of results) {
+      run.steps = [...run.steps, result.step];
+      if (result.step.status === 'ok') outputs.set(result.frame.id, result.output);
+      onEvent?.({
+        type: 'frame-completed',
+        frameId: result.frame.id,
+        run: { ...run, activeFrameIds: [...activeIds], steps: [...run.steps] }
+      });
+    }
+
+    run.activeFrameIds = [];
+    run.activeFrameId = null;
+
+    if (results.some(result => result.step.status === 'error')) {
       run.status = 'error';
       run.endedAt = new Date().toISOString();
-      onEvent?.({ type: 'run-completed', run: { ...run, steps: [...run.steps] } });
+      onEvent?.({ type: 'run-completed', run: { ...run, activeFrameIds: [], steps: [...run.steps] } });
       return run;
     }
   }
@@ -194,7 +248,152 @@ export async function runFramework(
   run.status = 'ok';
   run.endedAt = new Date().toISOString();
   run.activeFrameId = null;
-  onEvent?.({ type: 'run-completed', run: { ...run, steps: [...run.steps] } });
+  run.activeFrameIds = [];
+  onEvent?.({ type: 'run-completed', run: { ...run, activeFrameIds: [], steps: [...run.steps] } });
+  return run;
+}
+
+export async function rerunAffectedFramework(
+  framework: FrameworkDocument,
+  changedFrameIds: string[],
+  previousRun: FrameworkRun,
+  onEvent?: (event: RunEvent) => void
+): Promise<FrameworkRun> {
+  if (
+    previousRun.status !== 'ok' ||
+    previousRun.frameworkId !== framework.id ||
+    !changedFrameIds.length
+  ) {
+    return runFramework(framework, onEvent);
+  }
+
+  const validation = validateFramework(framework);
+  if (validation.length) return runFramework(framework, onEvent);
+
+  const affected = downstreamExecutionFrameIds(framework, changedFrameIds);
+  if (!affected.size) return runFramework(framework, onEvent);
+
+  const previousSteps = new Map(previousRun.steps.filter(step => step.status === 'ok').map(step => [step.frameId, step]));
+  const missingReusable = framework.frames.some(frame => !affected.has(frame.id) && !previousSteps.has(frame.id));
+  if (missingReusable) return runFramework(framework, onEvent);
+
+  let batches: Frame[][];
+  try {
+    batches = executionBatches(framework);
+  } catch {
+    return runFramework(framework, onEvent);
+  }
+
+  const startedAt = new Date().toISOString();
+  const run: FrameworkRun = {
+    id: runId(),
+    frameworkId: framework.id,
+    status: 'running',
+    startedAt,
+    activeFrameId: null,
+    activeFrameIds: [],
+    steps: []
+  };
+
+  const outputs = new Map<string, unknown>();
+  for (const [frameId, step] of previousSteps) {
+    if (!affected.has(frameId)) outputs.set(frameId, step.output);
+  }
+
+  const createdAt = new Date().toISOString();
+  for (const frame of framework.frames) {
+    if (affected.has(frame.id)) continue;
+    const prior = previousSteps.get(frame.id);
+    if (!prior) continue;
+    run.steps.push({
+      ...prior,
+      durationMs: 0,
+      reusedFromRunId: previousRun.id,
+      provenance: {
+        origin: 'run',
+        createdAt,
+        source: `Reused unchanged output from ${previousRun.id}`,
+        runId: previousRun.id,
+        frameId: frame.id
+      }
+    });
+  }
+
+  const connections = executionConnections(framework);
+  for (const batch of batches) {
+    const affectedBatch = batch.filter(frame => affected.has(frame.id));
+    if (!affectedBatch.length) continue;
+
+    const activeIds = affectedBatch.map(frame => frame.id);
+    run.activeFrameIds = activeIds;
+    run.activeFrameId = activeIds.length === 1 ? activeIds[0] : null;
+
+    for (const frame of affectedBatch) {
+      onEvent?.({
+        type: 'frame-started',
+        frameId: frame.id,
+        run: { ...run, activeFrameIds: [...activeIds], steps: [...run.steps] }
+      });
+    }
+
+    const results = await Promise.all(affectedBatch.map(async frame => {
+      const input = gatheredInput(connections, outputs, frame.id);
+      const started = performance.now();
+      try {
+        const output = await executeFrameOperation(frame, input);
+        const step: RunStep = {
+          frameId: frame.id,
+          status: 'ok',
+          input,
+          output,
+          durationMs: +(performance.now() - started).toFixed(2),
+          executor: frame.operation,
+          provenance: stepProvenance(run.id, frame)
+        };
+        return { frame, step, output };
+      } catch (error) {
+        const step: RunStep = {
+          frameId: frame.id,
+          status: 'error',
+          input,
+          error: error instanceof Error ? error.message : 'Execution failed',
+          durationMs: +(performance.now() - started).toFixed(2),
+          executor: frame.operation,
+          provenance: stepProvenance(run.id, frame)
+        };
+        return { frame, step, output: undefined };
+      }
+    }));
+
+    for (const result of results) {
+      run.steps = run.steps.filter(step => step.frameId !== result.frame.id);
+      run.steps.push(result.step);
+      if (result.step.status === 'ok') outputs.set(result.frame.id, result.output);
+      onEvent?.({
+        type: 'frame-completed',
+        frameId: result.frame.id,
+        run: { ...run, activeFrameIds: [...activeIds], steps: [...run.steps] }
+      });
+    }
+
+    run.activeFrameIds = [];
+    run.activeFrameId = null;
+
+    if (results.some(result => result.step.status === 'error')) {
+      run.status = 'error';
+      run.endedAt = new Date().toISOString();
+      onEvent?.({ type: 'run-completed', run: { ...run, activeFrameIds: [], steps: [...run.steps] } });
+      return run;
+    }
+  }
+
+  const order = new Map(framework.frames.map((frame, index) => [frame.id, index]));
+  run.steps = [...run.steps].sort((a, b) => (order.get(a.frameId) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.frameId) ?? Number.MAX_SAFE_INTEGER));
+  run.status = 'ok';
+  run.endedAt = new Date().toISOString();
+  run.activeFrameId = null;
+  run.activeFrameIds = [];
+  onEvent?.({ type: 'run-completed', run: { ...run, activeFrameIds: [], steps: [...run.steps] } });
   return run;
 }
 
@@ -206,10 +405,10 @@ export async function runSingleFrame(
   const frame = frameById(framework, frameId);
   const startedAt = new Date().toISOString();
   const run: FrameworkRun = {
-    id: runId(), frameworkId: framework.id, status: 'running', startedAt, activeFrameId: frameId, steps: []
+    id: runId(), frameworkId: framework.id, status: 'running', startedAt, activeFrameId: frameId, activeFrameIds: [frameId], steps: []
   };
   if (!frame) {
-    return { ...run, status: 'error', endedAt: new Date().toISOString(), activeFrameId: null, steps: [{ frameId, status: 'error', input: null, error: 'Frame not found', durationMs: 0, executor: 'DETERMINISTIC' }] };
+    return { ...run, status: 'error', endedAt: new Date().toISOString(), activeFrameId: null, activeFrameIds: [], steps: [{ frameId, status: 'error', input: null, error: 'Frame not found', durationMs: 0, executor: 'DETERMINISTIC' }] };
   }
 
   const incoming = executionConnections(framework).filter(connection => connection.toFrame === frameId);
@@ -221,19 +420,19 @@ export async function runSingleFrame(
   }
   const input = gatheredInput(incoming, prior, frameId);
   if (frame.inputs.length && incoming.length && input === undefined) {
-    return { ...run, status: 'error', endedAt: new Date().toISOString(), activeFrameId: null, steps: [{ frameId, status: 'error', input: null, error: 'Required upstream result is not available', durationMs: 0, executor: frame.operation }] };
+    return { ...run, status: 'error', endedAt: new Date().toISOString(), activeFrameId: null, activeFrameIds: [], steps: [{ frameId, status: 'error', input: null, error: 'Required upstream result is not available', durationMs: 0, executor: frame.operation }] };
   }
 
   const started = performance.now();
   try {
     const output = await executeFrameOperation(frame, input);
     return {
-      ...run, status: 'ok', endedAt: new Date().toISOString(), activeFrameId: null,
+      ...run, status: 'ok', endedAt: new Date().toISOString(), activeFrameId: null, activeFrameIds: [],
       steps: [{ frameId, status: 'ok', input, output, durationMs: +(performance.now() - started).toFixed(2), executor: frame.operation, provenance: stepProvenance(run.id, frame) }]
     };
   } catch (error) {
     return {
-      ...run, status: 'error', endedAt: new Date().toISOString(), activeFrameId: null,
+      ...run, status: 'error', endedAt: new Date().toISOString(), activeFrameId: null, activeFrameIds: [],
       steps: [{ frameId, status: 'error', input, error: error instanceof Error ? error.message : 'Execution failed', durationMs: +(performance.now() - started).toFixed(2), executor: frame.operation, provenance: stepProvenance(run.id, frame) }]
     };
   }
