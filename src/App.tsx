@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { compatible, rerunAffectedFramework, runFramework, runSingleFrame, validateFramework } from './domain/engine';
 import { lintFramework } from './domain/linter';
 import { FRAME_ORDERS } from './domain/orders';
+import { parseFrameworkExport, serializeFramework } from './domain/portable';
 import { createSeedFramework, FRAME_HEIGHT, FRAME_WIDTH } from './domain/seed';
 import {
   applyProposal,
@@ -489,6 +490,7 @@ export default function App() {
   const layerResizeRef = useRef<LayerResizeState | null>(null);
   const panRef = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
   const persistTimer = useRef<number | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const clipboardRef = useRef<ClipboardState | null>(null);
   const pastRef = useRef<Array<{ doc: FrameworkDocument; label: string }>>([]);
   const futureRef = useRef<Array<{ doc: FrameworkDocument; label: string }>>([]);
@@ -1648,6 +1650,51 @@ export default function App() {
     await refreshLists(next.id);
   }, [refreshLists]);
 
+  const exportCurrentFramework = useCallback(() => {
+    const payload = serializeFramework(frameworkRef.current);
+    const blob = new Blob([payload], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const safeName = (frameworkRef.current.name || 'framework').trim().replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'framework';
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${safeName}.vfa.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    setStatus('EXPORTED');
+    window.setTimeout(() => setStatus(current => current === 'EXPORTED' ? 'READY' : current), 700);
+  }, []);
+
+  const importFrameworkFile = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const imported = parseFrameworkExport(await file.text());
+      await saveFramework(frameworkRef.current).catch(() => undefined);
+      recordHistory(frameworkRef.current, 'Import Framework');
+      await saveFramework(imported);
+      await setActiveFrameworkId(imported.id);
+      frameworkRef.current = imported;
+      setFramework(imported);
+      setSelectedFrameIds(imported.frames[0]?.id ? [imported.frames[0].id] : []);
+      setSelectedConnectionId(null);
+      setSelectedLayerId(null);
+      setRun(null);
+      setDirtyExecutionFrameIds([]);
+      setScale(1);
+      setCableMotion(null);
+      setSideMode('framework');
+      setStatus('IMPORTED');
+      await refreshLists(imported.id);
+      window.setTimeout(() => setStatus(current => current === 'IMPORTED' ? 'READY' : current), 900);
+    } catch (error) {
+      console.error(error);
+      setStatus('IMPORT ERROR');
+    }
+  }, [recordHistory, refreshLists]);
+
   const reset = useCallback(() => {
     const seed = createSeedFramework();
     recordHistory(frameworkRef.current, 'Reset Framework');
@@ -1797,6 +1844,9 @@ export default function App() {
           <button className="text-btn secondary-top-action" onClick={redo} disabled={!futureRef.current.length}>Redo</button>
           <button className="text-btn secondary-top-action" onClick={() => openPanel('issues')}>Checks {lintIssues.length + executionIssues.length}</button>
           <button className="text-btn secondary-top-action" onClick={() => openPanel('runs')}>Runs {runs.length}</button>
+          <button className="text-btn secondary-top-action" onClick={exportCurrentFramework}>Export</button>
+          <button className="text-btn secondary-top-action" onClick={() => importInputRef.current?.click()}>Import</button>
+          <input ref={importInputRef} data-framework-import type="file" accept=".json,.vfa.json,application/json" hidden onChange={event => void importFrameworkFile(event)} />
           <button className="text-btn secondary-top-action" onClick={reset}>Reset</button>
           <button className="run-button" onClick={() => void executeAll()} disabled={status === 'RUNNING' || status === 'THINKING'}><span>Run</span><kbd>⌘R</kbd></button>
         </div>
