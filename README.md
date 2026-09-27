@@ -1,12 +1,12 @@
 # Visual Framework
 
-MVP status: ACCEPTED on September 15, 2026.
+MVP baseline: ACCEPTED on September 15, 2026.\n\nCurrent status: FINAL MVP 1.0 COMPLETION PASS — beginner-first usability and runtime hardening.
 
-Visual Framework makes structured thought visible, executable, inspectable, challengeable, reframable and reusable.
+Visual Framework helps people put ideas on a canvas, connect them, look at them in different ways, and run simple thinking steps while keeping the structure editable and visible.
 
 A Frame can hold information, an explicit Order or both. A Frame can execute independently when its required input exists. During a Framework Run, completed outputs become available to dependent Frames and the chain resolves visibly Frame by Frame.
 
-The accepted MVP also treats the graph as a reasoning structure. Frames can carry semantic roles, epistemic states and provenance. Semantic relationships remain separate from execution relationships. Structural model operations create Proposals that the user can inspect, accept, reject and reverse.
+The September 15 baseline already supports structured roles, status, origin tracking, separate meaning and run connections, and reversible suggested changes. The final MVP pass keeps that precision underneath while simplifying the default user experience.
 
 ## Project status
 
@@ -82,7 +82,7 @@ Each operation can run against a Frame, a Selection, a Branch or the complete Fr
 12. Compression into a separate Framework
 13. Deterministic offline PWA shell after installation
 
-See `MVP_STATUS.md` for the completed acceptance record and `FRAMEWORK_TASKS.md` for the mission filtered future register.
+See `MVP_STATUS.md` for the historical baseline acceptance, `MVP_BEGINNER_INTERACTION_CONTRACT.md` for the current user-facing MVP contract, and `FRAMEWORK_TASKS.md` for the final completion pass and later roadmap.
 
 ## Local data migration
 
