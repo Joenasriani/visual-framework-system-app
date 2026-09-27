@@ -280,16 +280,16 @@ try {
   await page.keyboard.press('Control+Shift+z');
   assert(await page.locator('.connection-group.semantic').count() === sem0 + 1, 'Redo semantic relationship failed');
   await page.keyboard.press('Control+z');
-  await page.getByRole('button', { name: 'Group selection inside active element' }).click();
+  await page.getByRole('button', { name: 'Group selection inside active item' }).click();
   await page.locator('[data-frame="asset-1"] .frame-parent').waitFor();
   await page.keyboard.press('Control+z');
   await sleep(70);
   assert(await page.locator('[data-frame="asset-1"] .frame-parent').count() === 0, 'Undo hierarchy failed');
   await page.keyboard.press('Control+Shift+z');
   await page.locator('[data-frame="asset-1"] .frame-parent').waitFor();
-  await page.getByRole('button', { name: 'Hide contained elements' }).click();
+  await page.getByRole('button', { name: 'Hide contained items' }).click();
   await sleep(80);
-  await page.getByRole('button', { name: 'Show contained elements' }).click();
+  await page.getByRole('button', { name: 'Show contained items' }).click();
   await page.getByRole('button', { name: 'Reset', exact: true }).click();
 
   // Progressive Framework execution exposes intermediate completion states.
