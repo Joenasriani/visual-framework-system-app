@@ -494,3 +494,10 @@
 .layer-header{border-color:#555a62;background:#30343a;color:#eef0f2;box-shadow:0 2px 5px rgba(0,0,0,.22)}
 .layer-name{color:#f2f3f4}
 .layer-count{color:#aeb3bb}
+
+.chain-select{border:1px solid #dedfe5;background:#fff;border-radius:9px;height:29px;padding:0 8px;font-size:10px;max-width:132px}
+.chain-preview-connections{position:absolute;inset:0;overflow:visible;pointer-events:none;z-index:9}
+.chain-preview-link{fill:none;stroke:#5966e9;stroke-width:2.2;stroke-dasharray:8 6;vector-effect:non-scaling-stroke;opacity:.82}
+.chain-preview-link.containment{stroke-dasharray:3 6;opacity:.68}
+.chain-apply{border-color:rgba(91,103,232,.38);color:#4d58d1}
+.chain-cancel{color:#777b85}
