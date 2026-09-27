@@ -2,9 +2,11 @@
 
 This file begins after the originally accepted MVP boundary.
 
-Current accepted MVP status lives in `MVP_STATUS.md`.
+The September 15 accepted baseline lives in `MVP_STATUS.md`. The current user-facing MVP contract lives in `MVP_BEGINNER_INTERACTION_CONTRACT.md`.
 
 The architecture has since been refined. The items in **Final MVP Completion Pass** are now treated as the remaining work required before freezing the product as the final MVP v1.0. Everything after that remains post-MVP unless a dependency forces an earlier architectural reservation.
+
+The final MVP surface must remain understandable to a first-time general user. Advanced internal concepts should stay behind plain-language controls unless the user explicitly needs them.
 
 Every future item must materially improve at least one of these abilities:
 
