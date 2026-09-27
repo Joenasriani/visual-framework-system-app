@@ -63,7 +63,7 @@ try {
   const initialFrames = await countFrames();
   assert(initialFrames >= 4, `Expected at least 4 seed Frames, found ${initialFrames}`);
 
-  await page.getByRole('button', { name: /Thought/ }).first().click();
+  await page.getByRole('button', { name: /Idea/ }).first().click();
   assert(await countFrames() === initialFrames + 1, 'Adding an element failed');
 
   const newest = page.locator('.frame').last();
@@ -135,8 +135,7 @@ try {
   assert(await countExecutionLinks() === executionBefore, 'Undo cable removal failed');
 
   await page.locator('[data-frame="instruction-1"]').click({ position: { x: 70, y: 30 } });
-  await page.getByRole('button', { name: 'Local', exact: true }).click();
-  await page.getByRole('button', { name: 'Run This Node', exact: true }).click();
+  await page.getByRole('button', { name: 'Run This Item', exact: true }).click();
   await page.getByText('PASSED', { exact: true }).waitFor({ timeout: 15000 });
 
   await page.locator('.run-button').click();
@@ -145,8 +144,8 @@ try {
   await page.getByText('Runs', { exact: true }).last().waitFor();
   assert(await page.locator('.run-list button').count() >= 1, 'Stored Run inspection failed');
 
-  await page.getByRole('button', { name: /Issues \d+/ }).click();
-  await page.getByText('Issues', { exact: true }).last().waitFor();
+  await page.getByRole('button', { name: /Checks \d+/ }).click();
+  await page.getByText('Checks', { exact: true }).last().waitFor();
   assert(await page.locator('.issue-list').count() === 1, 'Framework issue inspector failed');
 
   const reframeProposal = {
@@ -163,7 +162,7 @@ try {
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Review Suggested Change' }).click();
   await page.getByText('QA Alternative', { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Accept Proposal' }).click();
+  await page.getByRole('button', { name: 'Apply Changes' }).click();
   await page.getByText('QA Alternative', { exact: true }).waitFor();
   await page.keyboard.press('Control+z');
   await page.waitForTimeout(120);
