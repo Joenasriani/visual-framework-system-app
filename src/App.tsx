@@ -598,6 +598,21 @@ export default function App() {
   const lintIssues = useMemo(() => lintFramework(framework), [framework]);
   const executionIssues = useMemo(() => validateFramework(framework), [framework]);
   const activeProposal = useMemo(() => [...(framework.proposals ?? [])].reverse().find(item => item.status === 'pending') ?? null, [framework.proposals]);
+  const staleExecutionFrameIds = useMemo(() => {
+    const stale = new Set(dirtyExecutionFrameIds);
+    const queue = [...dirtyExecutionFrameIds];
+    while (queue.length) {
+      const current = queue.shift()!;
+      for (const connection of framework.connections) {
+        if (connection.kind === 'semantic' || connection.fromFrame !== current) continue;
+        if (!stale.has(connection.toFrame)) {
+          stale.add(connection.toFrame);
+          queue.push(connection.toFrame);
+        }
+      }
+    }
+    return stale;
+  }, [dirtyExecutionFrameIds, framework.connections]);
 
   const hiddenIds = useMemo(() => {
     const hidden = new Set<string>();
@@ -1606,7 +1621,7 @@ export default function App() {
     const final = canReuse && previousRun
       ? await rerunAffectedFramework(frameworkRef.current, dirtyExecutionFrameIds, previousRun, event => setRun(event.run))
       : await runFramework(frameworkRef.current, event => setRun(event.run));
-    setDirtyExecutionFrameIds([]);
+    if (final.status === 'ok') setDirtyExecutionFrameIds([]);
     setRun(final);
     setStatus(final.status === 'ok' ? 'PASSED' : 'STOPPED');
     await saveRun(final).catch(() => undefined);
@@ -1946,14 +1961,14 @@ export default function App() {
                 const active = Boolean(run?.activeFrameIds?.includes(frame.id) || run?.activeFrameId === frame.id);
                 const selected = selectedFrameIds.includes(frame.id);
                 const body = active ? 'Responding…' : framePlainExplanation(frame);
-                const meta = active ? 'RESPONDING' : dirtyExecutionFrameIds.includes(frame.id) ? 'CHANGED' : step?.reusedFromRunId ? 'REUSED' : step?.status === 'error' ? 'STOPPED' : frame.epistemicState ? stateLabel(frame.epistemicState) : 'UNASSESSED';
+                const meta = active ? 'RESPONDING' : staleExecutionFrameIds.has(frame.id) ? 'CHANGED' : step?.reusedFromRunId ? 'REUSED' : step?.status === 'error' ? 'STOPPED' : frame.epistemicState ? stateLabel(frame.epistemicState) : 'UNASSESSED';
                 const children = childrenByParent.get(frame.id) ?? [];
                 const parent = frame.parentId ? frameMap.get(frame.parentId) : undefined;
                 return (
                   <div
                     key={frame.id}
                     data-frame={frame.id}
-                    className={`frame frame-${frame.kind}${selected ? ' selected' : ''}${active ? ' run-active' : ''}${step?.status === 'ok' ? ' run-ok' : ''}${step?.status === 'error' ? ' run-error' : ''}`}
+                    className={`frame frame-${frame.kind}${selected ? ' selected' : ''}${active ? ' run-active' : ''}${staleExecutionFrameIds.has(frame.id) ? ' run-stale' : ''}${step?.status === 'ok' && !staleExecutionFrameIds.has(frame.id) ? ' run-ok' : ''}${step?.status === 'error' && !staleExecutionFrameIds.has(frame.id) ? ' run-error' : ''}`}
                     style={{ width: FRAME_WIDTH, height: FRAME_HEIGHT, left: frame.x, top: frame.y }}
                     onPointerDown={event => onFramePointerDown(event, frame)}
                     onPointerMove={onFramePointerMove}
