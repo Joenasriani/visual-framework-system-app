@@ -1,4 +1,7 @@
 import { chromium } from 'playwright';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const URL = process.env.LIVE_URL || 'https://visual-framework-app.vercel.app';
 const browser = await chromium.launch({ headless: true });
@@ -364,59 +367,53 @@ try {
   await page.waitForFunction(() => document.querySelector('.framework-switch')?.value === 'framework-main');
   await page.getByText('Start here', { exact: true }).waitFor();
 
-  // PWA reloads offline and an online Frame fails explicitly without network.
-  await page.getByRole('button', { name: 'Reset', exact: true }).click();
-  await page.evaluate(async () => { await navigator.serviceWorker.ready; });
-  if (!(await page.evaluate(() => Boolean(navigator.serviceWorker.controller)))) {
-    await page.reload({ waitUntil: 'networkidle' });
-  }
-  await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, { timeout: 8000 });
-  await page.evaluate(async () => {
-    const registration = await navigator.serviceWorker.ready;
-    registration.active?.postMessage({ type: 'CACHE_SHELL' });
-  });
-  await page.waitForFunction(async () => {
-    const keys = await caches.keys();
-    const cacheName = keys.find(key => key.startsWith('visual-framework-shell-'));
-    if (!cacheName) return false;
-    const requests = await (await caches.open(cacheName)).keys();
-    return requests.some(request => /\/assets\/.*\.js(?:\?|$)/.test(request.url));
-  }, null, { timeout: 8000 });
-  const shellState = await page.evaluate(async () => {
-    const root = Boolean(await caches.match('/'));
-    const keys = await caches.keys();
-    const cacheName = keys.find(key => key.startsWith('visual-framework-shell-'));
-    const requests = cacheName ? await (await caches.open(cacheName)).keys() : [];
-    return { root, urls: requests.map(request => request.url) };
-  });
-  assert(shellState.root, 'Offline shell HTML was not cached before disconnecting');
-  assert(shellState.urls.some(url => /\/assets\/.*\.js(?:\?|$)/.test(url)), 'Offline shell JavaScript was not cached before disconnecting');
-  await page.unroute('**/api/model');
-  await context.setOffline(true);
-  await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
+  // PWA reloads offline in an isolated persistent profile.
+  // Service workers are lifecycle-sensitive; this keeps the offline proof independent
+  // from the temporary interaction context used by the rest of the suite.
+  const pwaProfile = mkdtempSync(join(tmpdir(), 'vfa-pwa-'));
+  let pwaContext;
   try {
-    await page.getByText('Visual Framework', { exact: true }).first().waitFor({ timeout: 8000 });
-  } catch (error) {
-    const diagnostic = await page.evaluate(async () => {
+    pwaContext = await chromium.launchPersistentContext(pwaProfile, {
+      headless: true,
+      viewport: { width: 1440, height: 900 }
+    });
+    const pwaPage = pwaContext.pages()[0] ?? await pwaContext.newPage();
+    await pwaPage.goto(URL, { waitUntil: 'networkidle', timeout: 60000 });
+    await pwaPage.getByText('Visual Framework', { exact: true }).first().waitFor();
+
+    await pwaPage.evaluate(async () => { await navigator.serviceWorker.ready; });
+    if (!(await pwaPage.evaluate(() => Boolean(navigator.serviceWorker.controller)))) {
+      await pwaPage.reload({ waitUntil: 'networkidle' });
+    }
+    await pwaPage.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, { timeout: 8000 });
+
+    await pwaPage.evaluate(async () => {
+      const registration = await navigator.serviceWorker.ready;
+      registration.active?.postMessage({ type: 'CACHE_SHELL' });
+    });
+    await pwaPage.waitForFunction(async () => {
       const keys = await caches.keys();
-      const entries = [];
-      for (const key of keys) {
-        entries.push({ key, urls: (await (await caches.open(key)).keys()).map(request => request.url) });
-      }
-      return {
-        controller: Boolean(navigator.serviceWorker.controller),
-        title: document.title,
-        body: document.body?.innerText ?? '',
-        entries
-      };
-    }).catch(() => ({ diagnosticUnavailable: true }));
-    console.error('OFFLINE PWA DIAGNOSTIC', JSON.stringify(diagnostic));
-    throw error;
+      const cacheName = keys.find(key => key.startsWith('visual-framework-shell-'));
+      if (!cacheName) return false;
+      const requests = await (await caches.open(cacheName)).keys();
+      const urls = requests.map(request => request.url);
+      return Boolean(await caches.match('/')) &&
+        urls.some(url => /\/assets\/.*\.js(?:\?|$)/.test(url)) &&
+        urls.some(url => /\/assets\/.*\.css(?:\?|$)/.test(url));
+    }, null, { timeout: 8000 });
+
+    await pwaContext.setOffline(true);
+    await pwaPage.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
+    await pwaPage.getByText('Visual Framework', { exact: true }).first().waitFor({ timeout: 8000 });
+
+    await pwaPage.locator('[data-frame="instruction-1"]').click({ position: { x: 65, y: 28 } });
+    await pwaPage.getByRole('button', { name: 'Run This Item', exact: true }).click();
+    await pwaPage.getByText('STOPPED', { exact: true }).first().waitFor({ timeout: 8000 });
+  } finally {
+    await pwaContext?.setOffline(false).catch(() => undefined);
+    await pwaContext?.close().catch(() => undefined);
+    rmSync(pwaProfile, { recursive: true, force: true });
   }
-  await page.locator('[data-frame="instruction-1"]').click({ position: { x: 65, y: 28 } });
-  await page.getByRole('button', { name: 'Run This Item', exact: true }).click();
-  await page.getByText('STOPPED', { exact: true }).first().waitFor({ timeout: 8000 });
-  await context.setOffline(false);
 
   console.log('REMAINING MVP ACCEPTANCE PASSED');
 } finally {
