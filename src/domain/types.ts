@@ -188,6 +188,7 @@ export interface FrameworkRun {
   startedAt: string;
   endedAt?: string;
   activeFrameId?: string | null;
+  activeFrameIds?: string[];
   steps: RunStep[];
 }
 
