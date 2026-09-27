@@ -27,10 +27,14 @@ async function addElement(label) {
   await sleep(70);
 }
 
+const parallelTrace = [];
 await page.route('**/api/model', async route => {
   const body = route.request().postDataJSON?.() || {};
   const title = String(body.title || 'Frame');
-  await new Promise(resolve => setTimeout(resolve, title.startsWith('Structural ') ? 40 : 220));
+  const delay = title.startsWith('Structural ') ? 40 : (title === 'Parallel B' || title === 'Parallel C' ? 320 : (title === 'Merge D' ? 60 : 220));
+  if (title === 'Parallel B' || title === 'Parallel C' || title === 'Merge D') parallelTrace.push({ title, phase: 'start', at: Date.now() });
+  await new Promise(resolve => setTimeout(resolve, delay));
+  if (title === 'Parallel B' || title === 'Parallel C' || title === 'Merge D') parallelTrace.push({ title, phase: 'end', at: Date.now() });
   if (title.startsWith('Structural ')) {
     const op = title.slice('Structural '.length);
     const additions = op === 'compress'
@@ -362,6 +366,127 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('.framework-switch option').length >= 2);
   await page.locator('.framework-switch').selectOption('framework-main');
   await page.getByText('Source', { exact: true }).waitFor();
+
+  // Dependency-ready branches execute concurrently and a merge waits for every upstream result.
+  await page.evaluate(async () => {
+    const framework = {
+      id: 'framework-parallel-proof',
+      name: 'Parallel Branch Merge Proof',
+      goal: 'understand',
+      version: 1,
+      proposals: [],
+      transformations: [],
+      layers: [],
+      updatedAt: new Date().toISOString(),
+      frames: [
+        {
+          id: 'parallel-source', kind: 'asset', role: 'concept', epistemicState: 'known',
+          provenance: { origin: 'user', createdAt: new Date().toISOString() },
+          title: 'Parallel Source', operation: 'DETERMINISTIC', x: 120, y: 220,
+          inputs: [], outputs: [{ id: 'out', name: 'value', type: 'any' }],
+          body: '', value: 'seed'
+        },
+        {
+          id: 'parallel-b', kind: 'instruction', role: 'instruction', epistemicState: 'known',
+          provenance: { origin: 'user', createdAt: new Date().toISOString() },
+          title: 'Parallel B', operation: 'MODEL', x: 420, y: 130,
+          inputs: [{ id: 'in', name: 'input', type: 'any' }],
+          outputs: [{ id: 'out', name: 'value', type: 'any' }],
+          body: 'Branch B'
+        },
+        {
+          id: 'parallel-c', kind: 'instruction', role: 'instruction', epistemicState: 'known',
+          provenance: { origin: 'user', createdAt: new Date().toISOString() },
+          title: 'Parallel C', operation: 'MODEL', x: 420, y: 310,
+          inputs: [{ id: 'in', name: 'input', type: 'any' }],
+          outputs: [{ id: 'out', name: 'value', type: 'any' }],
+          body: 'Branch C'
+        },
+        {
+          id: 'merge-d', kind: 'instruction', role: 'result', epistemicState: 'known',
+          provenance: { origin: 'user', createdAt: new Date().toISOString() },
+          title: 'Merge D', operation: 'MODEL', x: 760, y: 220,
+          inputs: [
+            { id: 'left', name: 'left', type: 'any' },
+            { id: 'right', name: 'right', type: 'any' }
+          ],
+          outputs: [{ id: 'out', name: 'value', type: 'any' }],
+          body: 'Merge both branches'
+        }
+      ],
+      connections: [
+        { id: 'ps-b', fromFrame: 'parallel-source', fromPort: 'out', toFrame: 'parallel-b', toPort: 'in', kind: 'execution', meaning: 'feeds' },
+        { id: 'ps-c', fromFrame: 'parallel-source', fromPort: 'out', toFrame: 'parallel-c', toPort: 'in', kind: 'execution', meaning: 'feeds' },
+        { id: 'b-d', fromFrame: 'parallel-b', fromPort: 'out', toFrame: 'merge-d', toPort: 'left', kind: 'execution', meaning: 'feeds' },
+        { id: 'c-d', fromFrame: 'parallel-c', fromPort: 'out', toFrame: 'merge-d', toPort: 'right', kind: 'execution', meaning: 'feeds' }
+      ]
+    };
+
+    const request = indexedDB.open('visual-framework', 2);
+    const db = await new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(['frameworks', 'meta'], 'readwrite');
+      tx.objectStore('frameworks').put(framework);
+      tx.objectStore('meta').put(framework.id, 'active-framework-id');
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  });
+
+  parallelTrace.length = 0;
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByText('Parallel Branch Merge Proof', { exact: true }).first().waitFor();
+  await page.locator('.run-button').click();
+  await page.getByText('PASSED', { exact: true }).first().waitFor({ timeout: 15000 });
+
+  const event = (title, phase) => parallelTrace.find(item => item.title === title && item.phase === phase)?.at;
+  const bStart = event('Parallel B', 'start');
+  const bEnd = event('Parallel B', 'end');
+  const cStart = event('Parallel C', 'start');
+  const cEnd = event('Parallel C', 'end');
+  const dStart = event('Merge D', 'start');
+  assert(bStart && bEnd && cStart && cEnd && dStart, `Parallel trace incomplete: ${JSON.stringify(parallelTrace)}`);
+  assert(Math.max(bStart, cStart) < Math.min(bEnd, cEnd), `Independent branches did not overlap: ${JSON.stringify(parallelTrace)}`);
+  assert(dStart >= Math.max(bEnd, cEnd), `Merge executed before both branches completed: ${JSON.stringify(parallelTrace)}`);
+
+  const mergeInput = await page.evaluate(async () => {
+    const request = indexedDB.open('visual-framework', 2);
+    const db = await new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const runs = await new Promise((resolve, reject) => {
+      const tx = db.transaction('runs', 'readonly');
+      const req = tx.objectStore('runs').getAll();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    db.close();
+    const run = runs.filter(item => item.frameworkId === 'framework-parallel-proof').sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+    return run?.steps?.find(step => step.frameId === 'merge-d')?.input;
+  });
+  assert(Array.isArray(mergeInput) && mergeInput.length === 2, `Merge did not receive both branch outputs: ${JSON.stringify(mergeInput)}`);
+
+  await page.evaluate(async () => {
+    const request = indexedDB.open('visual-framework', 2);
+    const db = await new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('meta', 'readwrite');
+      tx.objectStore('meta').put('framework-main', 'active-framework-id');
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByText('Visual Framework', { exact: true }).first().waitFor();
 
   // PWA reloads offline and an online Frame fails explicitly without network.
   await page.getByRole('button', { name: 'Reset', exact: true }).click();
