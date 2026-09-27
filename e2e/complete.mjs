@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 
-const URL = process.env.LIVE_URL || 'https://visual-framework-system.vercel.app';
+const URL = process.env.LIVE_URL || 'https://visual-framework-app.vercel.app';
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const page = await context.newPage();
@@ -18,6 +18,23 @@ async function drag(from, to) {
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 });
   await page.mouse.up();
   await sleep(120);
+}
+
+async function addElement(label) {
+  await page.getByRole('button', { name: /Library/ }).first().click();
+  await page.getByRole('button', { name: new RegExp(`^${label.replace(/[.*+?^$\{\}()|[\]\\]/g, '\\async function drag(from, to) {
+  const a = await from.boundingBox();
+  const b = await to.boundingBox();
+  assert(a && b, 'Connection ports not measurable');
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await sleep(120);
+}
+')}\\s*·`) }).first().click();
+  await page.keyboard.press('Escape');
+  await sleep(70);
 }
 
 await page.route('**/api/model', async route => {
@@ -47,10 +64,11 @@ try {
   await page.getByRole('button', { name: 'Reset', exact: true }).click();
   await sleep(150);
 
-  // All five Frame kinds can be created and reversed.
+  // All five runtime Frame kinds can be created through the current element vocabulary.
+  // Thought=asset, Process=instruction, Rule=expression, Test=check, Run Result=output.
   const seed = await frameCount();
-  for (const name of ['Data', 'Step', 'Logic', 'Check', 'Result']) {
-    await page.getByRole('button', { name: new RegExp(name) }).first().click();
+  for (const name of ['Thought', 'Process', 'Rule', 'Test', 'Run Result']) {
+    await addElement(name);
   }
   assert(await frameCount() === seed + 5, 'All five Frame kinds were not created');
   for (let i = 0; i < 5; i++) await page.keyboard.press('Control+z');
@@ -102,7 +120,7 @@ try {
 
   // Compatible cable creation and reversal.
   const exec0 = await executionCount();
-  await page.getByRole('button', { name: /Step/ }).first().click();
+  await addElement('Process');
   const newStep = page.locator('.frame-instruction').last();
   await drag(page.locator('[data-frame="asset-1"] [data-port="out"]'), newStep.locator('[data-port="in"]'));
   assert(await executionCount() === exec0 + 1, 'Compatible cable connection failed');
@@ -116,7 +134,7 @@ try {
   await page.keyboard.press('Control+z');
 
   // Incompatible cable is rejected.
-  await page.getByRole('button', { name: /Check/ }).first().click();
+  await addElement('Test');
   const check = page.locator('.frame-check').last();
   const reject0 = await executionCount();
   await drag(check.locator('[data-port="out"]'), page.locator('[data-frame="expression-1"] [data-port="in"]'));
@@ -128,7 +146,7 @@ try {
   await sleep(120);
   const baseExec = await executionCount();
 
-  await page.getByRole('button', { name: /Step/ }).first().click();
+  await addElement('Process');
   const snapStep = page.locator('.frame-instruction').last();
   const sourceOut = page.locator('[data-frame="asset-1"] [data-port="out"]');
   const snapIn = snapStep.locator('[data-port="in"]');
