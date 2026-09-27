@@ -1,4 +1,4 @@
-const CACHE = 'visual-framework-shell-v4';
+const CACHE = 'visual-framework-shell-v5';
 const CORE = ['/', '/manifest.webmanifest', '/icon.svg'];
 
 async function fetchAndCache(cache, path) {
@@ -57,17 +57,22 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET' || new URL(event.request.url).origin !== self.location.origin) return;
 
   if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request)
-        .then(async response => {
+    const refresh = fetch(event.request)
+      .then(async response => {
+        if (response.ok) {
           const cache = await caches.open(CACHE);
           await cache.put('/', response.clone());
-          return response;
-        })
-        .catch(async () => {
-          const cached = await caches.match('/');
-          return cached || Response.error();
-        })
+        }
+        return response;
+      });
+
+    event.waitUntil(refresh.catch(() => undefined));
+    event.respondWith(
+      caches.match('/').then(async cached => {
+        if (cached) return cached;
+        try { return await refresh; }
+        catch { return Response.error(); }
+      })
     );
     return;
   }
