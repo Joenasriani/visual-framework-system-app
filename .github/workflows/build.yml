@@ -31,6 +31,8 @@ jobs:
           cat /tmp/vfa-preview.log
           exit 1
       - name: Run current-commit MVP acceptance
-        run: node e2e/complete.mjs
+        run: |
+          node e2e/beginner.mjs
+          node e2e/complete.mjs
         env:
           LIVE_URL: http://127.0.0.1:4173
