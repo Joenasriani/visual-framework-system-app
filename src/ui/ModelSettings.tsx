@@ -97,11 +97,11 @@ export function ModelSettingsInspector({ onClose, onChanged }: { onClose: () => 
     <p className="proposal-summary">VFA Free works immediately. Or use your own provider key and model. Changing this setting never changes your map.</p>
 
     <div className="model-provider-list" role="radiogroup" aria-label="AI provider">
-      <button type="button" role="radio" aria-checked={draft.provider === 'vfa-free'} className={draft.provider === 'vfa-free' ? 'active' : ''} onClick={() => selectProvider('vfa-free')}>
+      <button type="button" role="radio" aria-label="VFA Free" aria-checked={draft.provider === 'vfa-free'} className={draft.provider === 'vfa-free' ? 'active' : ''} onClick={() => selectProvider('vfa-free')}>
         <strong>VFA Free</strong><small>Our connected OpenRouter free model · no setup</small>
       </button>
       {PERSONAL_PROVIDERS.map(provider => (
-        <button type="button" role="radio" aria-checked={draft.provider === provider} key={provider} className={draft.provider === provider ? 'active' : ''} onClick={() => selectProvider(provider)}>
+        <button type="button" role="radio" aria-label={PROVIDER_LABELS[provider]} aria-checked={draft.provider === provider} key={provider} className={draft.provider === provider ? 'active' : ''} onClick={() => selectProvider(provider)}>
           <strong>{PROVIDER_LABELS[provider]}</strong><small>Use my own API key</small>
         </button>
       ))}
