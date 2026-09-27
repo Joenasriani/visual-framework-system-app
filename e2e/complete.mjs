@@ -112,6 +112,40 @@ try {
   assert(await page.locator('.zoom span').innerText() !== zoom0, 'Pointer zoom failed');
   await page.getByRole('button', { name: 'Fit', exact: true }).first().click();
 
+  // Chain constructors preview and reversibly convert selected topology without manual rewiring.
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
+  await sleep(100);
+  for (const [index, id] of ['asset-1','instruction-1','expression-1','output-1'].entries()) {
+    await page.locator(`[data-frame="${id}"]`).click({ position: { x: 70, y: 28 }, modifiers: index === 0 ? [] : ['Control'] });
+  }
+  assert(await page.getByText('4 selected', { exact: true }).count() === 1, 'Four-Frame chain selection failed');
+
+  const chainSelect = page.locator('.chain-select');
+  await chainSelect.selectOption('sequence');
+  await page.getByRole('button', { name: 'Preview Chain', exact: true }).click();
+  assert(await page.locator('.chain-preview-link').count() === 3, 'Sequence preview topology is incorrect');
+  await page.getByRole('button', { name: 'Apply Chain', exact: true }).click();
+  assert(await executionCount() === 3, 'Sequence Chain application failed');
+
+  await chainSelect.selectOption('branch');
+  await page.getByRole('button', { name: 'Preview Chain', exact: true }).click();
+  assert(await page.locator('.chain-preview-link').count() === 3, 'Branch preview topology is incorrect');
+  await page.getByRole('button', { name: 'Apply Chain', exact: true }).click();
+  assert(await executionCount() === 3, 'Branch Chain conversion failed');
+
+  await chainSelect.selectOption('diamond');
+  await page.getByRole('button', { name: 'Preview Chain', exact: true }).click();
+  assert(await page.locator('.chain-preview-link').count() === 4, 'Diamond preview topology is incorrect');
+  await page.getByRole('button', { name: 'Apply Chain', exact: true }).click();
+  assert(await executionCount() === 4, 'Diamond Chain conversion failed');
+  assert(await page.locator('[data-frame="output-1"] [data-port="in"]').count() >= 2, 'Diamond merge did not create enough input ports');
+
+  await page.keyboard.press('Control+z');
+  await sleep(80);
+  assert(await executionCount() === 3, 'Undo Chain conversion failed');
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
+  await sleep(100);
+
   // Compatible cable creation and reversal.
   const exec0 = await executionCount();
   await addElement('Process');
