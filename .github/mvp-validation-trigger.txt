@@ -1,0 +1,3 @@
+VFA MVP current acceptance validation
+Base main commit: f31df6866ddb49ff68e00a6a847766931e343e98
+Purpose: trigger pull-request CI without changing application code.
