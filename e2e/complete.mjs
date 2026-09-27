@@ -371,8 +371,26 @@ try {
     await page.reload({ waitUntil: 'networkidle' });
   }
   await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, { timeout: 8000 });
-  const shellCached = await page.evaluate(async () => Boolean(await caches.match('/')));
-  assert(shellCached, 'Offline shell was not cached before disconnecting');
+  await page.evaluate(async () => {
+    const registration = await navigator.serviceWorker.ready;
+    registration.active?.postMessage({ type: 'CACHE_SHELL' });
+  });
+  await page.waitForFunction(async () => {
+    const keys = await caches.keys();
+    const cacheName = keys.find(key => key.startsWith('visual-framework-shell-'));
+    if (!cacheName) return false;
+    const requests = await (await caches.open(cacheName)).keys();
+    return requests.some(request => /\/assets\/.*\.js(?:\?|$)/.test(request.url));
+  }, null, { timeout: 8000 });
+  const shellState = await page.evaluate(async () => {
+    const root = Boolean(await caches.match('/'));
+    const keys = await caches.keys();
+    const cacheName = keys.find(key => key.startsWith('visual-framework-shell-'));
+    const requests = cacheName ? await (await caches.open(cacheName)).keys() : [];
+    return { root, urls: requests.map(request => request.url) };
+  });
+  assert(shellState.root, 'Offline shell HTML was not cached before disconnecting');
+  assert(shellState.urls.some(url => /\/assets\/.*\.js(?:\?|$)/.test(url)), 'Offline shell JavaScript was not cached before disconnecting');
   await page.unroute('**/api/model');
   await context.setOffline(true);
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
