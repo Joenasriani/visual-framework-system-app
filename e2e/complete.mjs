@@ -219,6 +219,10 @@ try {
   });
   const beforeLayer = await layer.boundingBox();
   const gripBox = await grip.boundingBox();
+  const gripHit = gripBox ? await page.evaluate(({ x, y }) => {
+    const hit = document.elementFromPoint(x, y);
+    return hit ? { tag: hit.tagName, className: hit.className, text: hit.textContent } : null;
+  }, { x: gripBox.x + gripBox.width / 2, y: gripBox.y + gripBox.height / 2 }) : null;
   const beforeAsset = await page.locator('[data-frame="asset-1"]').boundingBox();
   const beforeInstruction = await page.locator('[data-frame="instruction-1"]').boundingBox();
   assert(beforeLayer && gripBox && beforeAsset && beforeInstruction, 'Layer move geometry missing');
@@ -242,7 +246,7 @@ try {
   });
   assert(
     movedLayer && movedAsset && movedInstruction && movedAsset.x > beforeAsset.x + 50 && movedInstruction.x > beforeInstruction.x + 50,
-    `Layer move failed geometry: layer ${JSON.stringify({ before: beforeLayer, after: movedLayer })}; asset ${JSON.stringify({ before: beforeAsset, after: movedAsset })}; instruction ${JSON.stringify({ before: beforeInstruction, after: movedInstruction })}; trace ${JSON.stringify(layerTrace)}`
+    `Layer move failed geometry: gripHit ${JSON.stringify(gripHit)}; layer ${JSON.stringify({ before: beforeLayer, after: movedLayer })}; asset ${JSON.stringify({ before: beforeAsset, after: movedAsset })}; instruction ${JSON.stringify({ before: beforeInstruction, after: movedInstruction })}; trace ${JSON.stringify(layerTrace)}`
   );
 
   const beforeResize = await layer.boundingBox();
