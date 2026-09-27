@@ -209,15 +209,15 @@ try {
   assert(await page.locator('.layer').count() === layers0 + 1, 'Layer was not created');
 
   const layer = page.locator('.layer').last();
-  const header = layer.locator('.layer-header');
+  const grip = layer.locator('.layer-grip');
   const beforeLayer = await layer.boundingBox();
-  const headerBox = await header.boundingBox();
+  const gripBox = await grip.boundingBox();
   const beforeAsset = await page.locator('[data-frame="asset-1"]').boundingBox();
   const beforeInstruction = await page.locator('[data-frame="instruction-1"]').boundingBox();
-  assert(beforeLayer && headerBox && beforeAsset && beforeInstruction, 'Layer move geometry missing');
-  await page.mouse.move(headerBox.x + Math.min(80, headerBox.width * 0.45), headerBox.y + headerBox.height / 2);
+  assert(beforeLayer && gripBox && beforeAsset && beforeInstruction, 'Layer move geometry missing');
+  await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2);
   await page.mouse.down();
-  await page.mouse.move(headerBox.x + Math.min(180, headerBox.width * 0.75), headerBox.y + headerBox.height / 2 + 50, { steps: 8 });
+  await page.mouse.move(gripBox.x + gripBox.width / 2 + 100, gripBox.y + gripBox.height / 2 + 50, { steps: 8 });
   await page.mouse.up();
   await sleep(120);
   const movedAsset = await page.locator('[data-frame="asset-1"]').boundingBox();
