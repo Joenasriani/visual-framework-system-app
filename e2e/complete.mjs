@@ -340,7 +340,7 @@ try {
   await page.keyboard.press('Control+z');
 
   // Linter issue navigates to its affected Frame.
-  await page.getByRole('button', { name: /Issues \d+/ }).click();
+  await page.getByRole('button', { name: /Checks \d+/ }).click();
   const issue = page.locator('.issue-list button').first();
   await issue.waitFor();
   await issue.click();
