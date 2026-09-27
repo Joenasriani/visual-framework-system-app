@@ -900,6 +900,25 @@ export default function App() {
     playGraphClick('connect');
   }, [persist, recordHistory]);
 
+  useEffect(() => {
+    const onMove = (event: PointerEvent) => {
+      if (!layerDragRef.current) return;
+      onLayerHeaderPointerMove(event as unknown as React.PointerEvent<HTMLDivElement>);
+    };
+    const onUp = (event: PointerEvent) => {
+      if (!layerDragRef.current) return;
+      onLayerHeaderPointerUp(event as unknown as React.PointerEvent<HTMLDivElement>);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [onLayerHeaderPointerMove, onLayerHeaderPointerUp]);
+
   const onLayerResizePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>, layer: Layer, edge: LayerResizeState['edge']) => {
     event.stopPropagation();
     event.preventDefault();
@@ -1769,9 +1788,6 @@ export default function App() {
                     <div
                       className="layer-header"
                       onPointerDown={event => onLayerHeaderPointerDown(event, layer)}
-                      onPointerMove={onLayerHeaderPointerMove}
-                      onPointerUp={onLayerHeaderPointerUp}
-                      onPointerCancel={onLayerHeaderPointerUp}
                     >
                       <span className="layer-grip" aria-hidden="true">⋮⋮</span>
                       <input
