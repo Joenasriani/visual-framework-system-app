@@ -8,7 +8,7 @@ async function inspect(viewport, reducedMotion = 'no-preference') {
   const context = await browser.newContext({ viewport, reducedMotion });
   const page = await context.newPage();
   await page.goto(URL, { waitUntil: 'networkidle' });
-  await page.getByText('Visual Framework', { exact: true }).first().waitFor();
+  await page.locator('.app-shell').waitFor();
   return { context, page };
 }
 
