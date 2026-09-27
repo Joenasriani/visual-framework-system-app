@@ -15,6 +15,17 @@ try {
     viewport: { width: 1440, height: 900 }
   });
   const page = context.pages()[0] ?? await context.newPage();
+  const requestFailures = [];
+  const pageErrors = [];
+  const consoleErrors = [];
+  page.on('requestfailed', request => requestFailures.push({
+    url: request.url(),
+    error: request.failure()?.errorText ?? 'unknown'
+  }));
+  page.on('pageerror', error => pageErrors.push(String(error)));
+  page.on('console', message => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
 
   await page.goto(URL, { waitUntil: 'networkidle', timeout: 60000 });
   await page.getByText('Visual Framework', { exact: true }).first().waitFor();
@@ -57,8 +68,56 @@ try {
   }
   assert(originStopped, 'Preview origin did not stop for offline acceptance');
 
+  const cachedAssetProof = await page.evaluate(async () => {
+    const keys = await caches.keys();
+    const cacheName = keys.find(key => key.startsWith('visual-framework-shell-'));
+    const requests = cacheName ? await (await caches.open(cacheName)).keys() : [];
+    const jsUrl = requests.map(request => request.url).find(url => /\/assets\/.*\.js(?:\?|$)/.test(url));
+    if (!jsUrl) return { ok: false, reason: 'no cached js' };
+    try {
+      const response = await fetch(jsUrl);
+      const text = await response.text();
+      return {
+        ok: response.ok,
+        status: response.status,
+        contentType: response.headers.get('content-type'),
+        bytes: text.length,
+        jsUrl
+      };
+    } catch (error) {
+      return { ok: false, reason: String(error), jsUrl };
+    }
+  });
+  assert(cachedAssetProof.ok && cachedAssetProof.bytes > 0, `Cached JS could not be served after origin outage: ${JSON.stringify(cachedAssetProof)}`);
+
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
-  await page.getByText('Visual Framework', { exact: true }).first().waitFor({ timeout: 8000 });
+  try {
+    await page.getByText('Visual Framework', { exact: true }).first().waitFor({ timeout: 8000 });
+  } catch (error) {
+    const diagnostic = await page.evaluate(async () => {
+      const keys = await caches.keys();
+      const entries = [];
+      for (const key of keys) {
+        entries.push({ key, urls: (await (await caches.open(key)).keys()).map(request => request.url) });
+      }
+      return {
+        controller: Boolean(navigator.serviceWorker.controller),
+        title: document.title,
+        root: document.querySelector('#root')?.innerHTML ?? null,
+        body: document.body?.innerText ?? '',
+        resources: performance.getEntriesByType('resource').map(entry => entry.name),
+        entries
+      };
+    }).catch(() => ({ diagnosticUnavailable: true }));
+    console.error('TRUE OFFLINE DIAGNOSTIC', JSON.stringify({
+      cachedAssetProof,
+      diagnostic,
+      requestFailures,
+      pageErrors,
+      consoleErrors
+    }));
+    throw error;
+  }
 
   await page.locator('[data-frame="instruction-1"]').click({ position: { x: 65, y: 28 } });
   await page.getByRole('button', { name: 'Run This Item', exact: true }).click();
