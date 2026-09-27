@@ -37,6 +37,7 @@ jobs:
         run: |
           node e2e/beginner.mjs
           node e2e/model-settings.mjs
+          node e2e/soft-motion.mjs
           node e2e/complete.mjs
         env:
           LIVE_URL: http://127.0.0.1:4173
