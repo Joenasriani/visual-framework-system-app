@@ -224,7 +224,7 @@ try {
   assert(beforeLayer && gripBox && beforeAsset && beforeInstruction, 'Layer move geometry missing');
   await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2);
   await page.mouse.down();
-  await page.mouse.move(gripBox.x + gripBox.width / 2 + 100, gripBox.y + gripBox.height / 2 + 50, { steps: 8 });
+  await page.mouse.move(gripBox.x + gripBox.width / 2 + 100, gripBox.y + gripBox.height / 2 + 50);
   await page.mouse.up();
   await sleep(120);
   const movedLayer = await layer.boundingBox();
