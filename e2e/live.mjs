@@ -101,17 +101,17 @@ try {
   const stepAfter = await page.locator('[data-frame="instruction-1"]').boundingBox();
   assert(assetAfter && stepAfter && assetAfter.x > assetBefore.x + 40 && stepAfter.x > stepBefore.x + 40, 'Multi Frame movement failed');
 
-  await page.getByRole('button', { name: 'Contain selection in active Frame' }).click();
+  await page.getByRole('button', { name: 'Group selection inside active element' }).click();
   await page.locator('[data-frame="asset-1"] .frame-parent').waitFor();
-  await page.getByRole('button', { name: 'Collapse children' }).click();
+  await page.getByRole('button', { name: 'Hide contained elements' }).click();
   await page.waitForTimeout(120);
   assert(await page.locator('[data-frame="asset-1"]').count() === 0, 'Hierarchy collapse failed');
-  await page.getByRole('button', { name: 'Expand children' }).click();
+  await page.getByRole('button', { name: 'Show contained elements' }).click();
   await page.locator('[data-frame="asset-1"]').waitFor();
 
   await page.locator('.relation-select').selectOption('supports');
   const semanticBefore = await page.locator('.connection-group.semantic').count();
-  await page.getByRole('button', { name: 'Relate', exact: true }).click();
+  await page.getByRole('button', { name: 'Connect', exact: true }).click();
   await page.waitForTimeout(120);
   assert(await page.locator('.connection-group.semantic').count() === semanticBefore + 1, 'Semantic relationship creation failed');
 
@@ -136,7 +136,7 @@ try {
 
   await page.locator('[data-frame="instruction-1"]').click({ position: { x: 70, y: 30 } });
   await page.getByRole('button', { name: 'Local', exact: true }).click();
-  await page.getByRole('button', { name: 'Run Frame', exact: true }).click();
+  await page.getByRole('button', { name: 'Run This Node', exact: true }).click();
   await page.getByText('PASSED', { exact: true }).waitFor({ timeout: 15000 });
 
   await page.locator('.run-button').click();
@@ -161,7 +161,7 @@ try {
   await injectProposal(reframeProposal);
   await page.reload({ waitUntil: 'networkidle' });
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Review Proposal' }).click();
+  await page.getByRole('button', { name: 'Review Suggested Change' }).click();
   await page.getByText('QA Alternative', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Accept Proposal' }).click();
   await page.getByText('QA Alternative', { exact: true }).waitFor();
@@ -186,7 +186,7 @@ try {
   await injectProposal(compressProposal);
   await page.reload({ waitUntil: 'networkidle' });
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Review Proposal' }).click();
+  await page.getByRole('button', { name: 'Review Suggested Change' }).click();
   await page.getByRole('button', { name: 'Create Framework' }).click();
   await page.getByText('Compressed Core', { exact: true }).waitFor();
   await page.waitForFunction(() => document.querySelectorAll('.framework-switch option').length >= 2);
