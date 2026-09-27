@@ -269,7 +269,7 @@ export async function runSingleFrame(
     };
   } catch (error) {
     return {
-      ...run, status: 'error', endedAt: new Date().toISOString(), activeFrameId: null,
+      ...run, status: 'error', endedAt: new Date().toISOString(), activeFrameId: null, activeFrameIds: [],
       steps: [{ frameId, status: 'error', input, error: error instanceof Error ? error.message : 'Execution failed', durationMs: +(performance.now() - started).toFixed(2), executor: frame.operation, provenance: stepProvenance(run.id, frame) }]
     };
   }
