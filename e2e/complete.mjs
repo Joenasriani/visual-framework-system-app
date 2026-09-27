@@ -394,7 +394,25 @@ try {
   await page.unroute('**/api/model');
   await context.setOffline(true);
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
-  await page.getByText('Visual Framework', { exact: true }).first().waitFor({ timeout: 8000 });
+  try {
+    await page.getByText('Visual Framework', { exact: true }).first().waitFor({ timeout: 8000 });
+  } catch (error) {
+    const diagnostic = await page.evaluate(async () => {
+      const keys = await caches.keys();
+      const entries = [];
+      for (const key of keys) {
+        entries.push({ key, urls: (await (await caches.open(key)).keys()).map(request => request.url) });
+      }
+      return {
+        controller: Boolean(navigator.serviceWorker.controller),
+        title: document.title,
+        body: document.body?.innerText ?? '',
+        entries
+      };
+    }).catch(() => ({ diagnosticUnavailable: true }));
+    console.error('OFFLINE PWA DIAGNOSTIC', JSON.stringify(diagnostic));
+    throw error;
+  }
   await page.locator('[data-frame="instruction-1"]').click({ position: { x: 65, y: 28 } });
   await page.getByRole('button', { name: 'Run This Item', exact: true }).click();
   await page.getByText('STOPPED', { exact: true }).first().waitFor({ timeout: 8000 });
