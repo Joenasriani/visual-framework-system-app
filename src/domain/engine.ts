@@ -202,14 +202,14 @@ export async function runFramework(
   const outputs = new Map<string, unknown>();
   const connections = executionConnections(framework);
   for (const frame of ordered) {
-    const input = gatheredInput(connections, outputs, frame.id);
+    const input = gatheredInput(connections, outputs, frame);
     run.activeFrameId = frame.id;
     onEvent?.({ type: 'frame-started', frameId: frame.id, run: { ...run, steps: [...run.steps] } });
     const started = performance.now();
     try {
       const result = await executeFrameOperation(frame, input);
       const output = result.value;
-      outputs.set(frame.id, output);
+      storeFrameOutputs(outputs, frame, output);
       const step: RunStep = {
         frameId: frame.id,
         status: 'ok',
@@ -263,17 +263,38 @@ export async function runSingleFrame(
   }
 
   const incoming = executionConnections(framework).filter(connection => connection.toFrame === frameId);
-  const prior = new Map((previousRun?.steps ?? []).filter(step => step.status === 'ok').map(step => [step.frameId, step.output]));
-  for (const connection of incoming) {
-    if (prior.has(connection.fromFrame)) continue;
-    const upstream = frameById(framework, connection.fromFrame);
-    if (upstream?.kind === 'asset') prior.set(upstream.id, upstream.value ?? upstream.body);
+  const prior = new Map<string, unknown>();
+  for (const step of previousRun?.steps ?? []) {
+    if (step.status !== 'ok') continue;
+    const upstream = frameById(framework, step.frameId);
+    if (upstream) storeFrameOutputs(prior, upstream, step.output);
   }
-  const input = gatheredInput(incoming, prior, frameId);
-  if (frame.inputs.length && incoming.length && input === undefined) {
-    return { ...run, status: 'error', endedAt: new Date().toISOString(), activeFrameId: null, steps: [{ frameId, status: 'error', input: null, error: 'Required upstream result is not available', durationMs: 0, executor: frame.operation }] };
+  for (const connection of incoming) {
+    const upstream = frameById(framework, connection.fromFrame);
+    if (upstream?.kind === 'asset' && !prior.has(outputKey(upstream.id, connection.fromPort))) {
+      storeFrameOutputs(prior, upstream, upstream.value ?? upstream.body);
+    }
   }
 
+  const missing = missingRequiredInputs(incoming, prior, frame);
+  if (missing.length) {
+    return {
+      ...run,
+      status: 'error',
+      endedAt: new Date().toISOString(),
+      activeFrameId: null,
+      steps: [{
+        frameId,
+        status: 'error',
+        input: null,
+        error: `Required input${missing.length > 1 ? 's are' : ' is'} not available: ${missing.join(', ')}`,
+        durationMs: 0,
+        executor: frame.operation
+      }]
+    };
+  }
+
+  const input = gatheredInput(incoming, prior, frame);
   const started = performance.now();
   try {
     const result = await executeFrameOperation(frame, input);
