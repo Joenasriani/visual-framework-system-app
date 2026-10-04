@@ -40,14 +40,13 @@ jobs:
           git rev-parse HEAD > evidence/source-commit.txt
           echo "Source tested: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
           echo 'Automated responses are mocked. Real human use and live AI are separate, unverified gates.' >> "$GITHUB_STEP_SUMMARY"
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - name: Type checking
         id: types
         run: npm run typecheck 2>&1 | tee evidence/typecheck.log
       - name: Production build
         id: build
         run: npm run build 2>&1 | tee evidence/build.log
-      - run: npm install --no-save playwright agent-browser
       - run: npx playwright install --with-deps chromium
       - name: Start the built source
         id: serve
@@ -60,13 +59,6 @@ jobs:
           done
           cat evidence/preview.log
           exit 1
-      - name: Capture the actual first screen
-        continue-on-error: true
-        run: |
-          npx agent-browser open http://127.0.0.1:4173
-          npx agent-browser snapshot -i > evidence/first-screen.txt
-          npx agent-browser screenshot evidence/first-screen.png
-          npx agent-browser close
       - name: First-use behavior and responsive evidence
         id: firstuse
         run: node e2e/human-first.mjs 2>&1 | tee evidence/first-use.log
