@@ -11,6 +11,8 @@ function frameById(framework: FrameworkDocument, id: string) {
   return framework.frames.find(frame => frame.id === id);
 }
 
+const outputKey = (frameId: string, portId: string) => `${frameId}::${portId}`;
+
 export function validateFramework(framework: FrameworkDocument): string[] {
   const errors: string[] = [];
   const connections = executionConnections(framework);
@@ -30,12 +32,16 @@ export function validateFramework(framework: FrameworkDocument): string[] {
     if (!compatible(output.type, input.type)) {
       errors.push(`${from.title}.${output.name} to ${to.title}.${input.name}: ${output.type} is not compatible with ${input.type}`);
     }
+    if (connection.fromFrame === connection.toFrame) {
+      errors.push(`${from.title}: an execution connection cannot feed the same Frame`);
+    }
   }
 
   for (const frame of framework.frames) {
     for (const input of frame.inputs) {
-      const incoming = connections.some(connection => connection.toFrame === frame.id && connection.toPort === input.id);
-      if (!incoming && frame.kind !== 'asset') errors.push(`${frame.title}: ${input.name} is not connected`);
+      const incoming = connections.filter(connection => connection.toFrame === frame.id && connection.toPort === input.id);
+      if (!incoming.length && frame.kind !== 'asset') errors.push(`${frame.title}: ${input.name} is not connected`);
+      if (incoming.length > 1) errors.push(`${frame.title}: ${input.name} has more than one execution cable`);
     }
   }
   return errors;
@@ -113,10 +119,38 @@ async function executeFrameOperation(frame: Frame, input: unknown): Promise<Exec
   return { value: input };
 }
 
-function gatheredInput(connections: Connection[], outputs: Map<string, unknown>, frameId: string): unknown {
-  const incoming = connections.filter(connection => connection.toFrame === frameId);
-  const values = incoming.map(connection => outputs.get(connection.fromFrame));
-  return values.length <= 1 ? values[0] : values;
+function portValue(frame: Frame, value: unknown, portId: string, index: number): unknown {
+  if (frame.outputs.length <= 1) return value;
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(record, portId)) return record[portId];
+    const port = frame.outputs[index];
+    if (port && Object.prototype.hasOwnProperty.call(record, port.name)) return record[port.name];
+  }
+  return index === 0 ? value : undefined;
+}
+
+function storeFrameOutputs(outputs: Map<string, unknown>, frame: Frame, value: unknown) {
+  frame.outputs.forEach((port, index) => outputs.set(outputKey(frame.id, port.id), portValue(frame, value, port.id, index)));
+}
+
+function gatheredInput(connections: Connection[], outputs: Map<string, unknown>, frame: Frame): unknown {
+  if (!frame.inputs.length) return undefined;
+  const values = frame.inputs.map(input => {
+    const connection = connections.find(item => item.toFrame === frame.id && item.toPort === input.id);
+    return connection ? outputs.get(outputKey(connection.fromFrame, connection.fromPort)) : undefined;
+  });
+  if (frame.inputs.length === 1) return values[0];
+  return Object.fromEntries(frame.inputs.map((input, index) => [input.id, values[index]]));
+}
+
+function missingRequiredInputs(connections: Connection[], outputs: Map<string, unknown>, frame: Frame): string[] {
+  if (frame.kind === 'asset') return [];
+  return frame.inputs.filter(input => {
+    const connection = connections.find(item => item.toFrame === frame.id && item.toPort === input.id);
+    if (!connection) return true;
+    return !outputs.has(outputKey(connection.fromFrame, connection.fromPort));
+  }).map(input => input.name);
 }
 
 function runId() {
