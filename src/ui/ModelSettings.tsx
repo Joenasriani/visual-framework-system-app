@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   DEFAULT_MODELS,
   getModelSettings,
-  modelRequestConfig,
+  isFreeOpenRouterModel,
   PROVIDER_LABELS,
   resetModelSettings,
   setModelSettings,
@@ -57,14 +57,19 @@ export function ModelSettingsInspector({ onClose, onChanged }: { onClose: () => 
       setTestState('ok');
       return;
     }
-    let config;
-    try {
-      config = modelRequestConfig(setModelSettings(draft));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Choose a valid free OpenRouter route.');
+    const model = draft.model.trim();
+    const apiKey = draft.apiKey.trim();
+    if (!model || !apiKey) {
+      setMessage('Enter an OpenRouter key and free model before testing.');
       setTestState('error');
       return;
     }
+    if (!isFreeOpenRouterModel(model)) {
+      setMessage('Only OpenRouter free routes are allowed. Use openrouter/free or a model ending in :free.');
+      setTestState('error');
+      return;
+    }
+    const config = { provider: 'openrouter' as const, model, apiKey };
     setTestState('testing');
     setMessage('Testing a small free request…');
     try {
