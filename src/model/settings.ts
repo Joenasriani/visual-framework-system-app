@@ -1,4 +1,4 @@
-export type ModelProvider = 'vfa-free' | 'openai' | 'anthropic' | 'openrouter';
+export type ModelProvider = 'vfa-free' | 'openrouter';
 
 export interface ModelSettings {
   provider: ModelProvider;
@@ -8,19 +8,20 @@ export interface ModelSettings {
 
 export const PROVIDER_LABELS: Record<ModelProvider, string> = {
   'vfa-free': 'VFA Free',
-  openai: 'OpenAI',
-  anthropic: 'Claude',
   openrouter: 'OpenRouter'
 };
 
 export const DEFAULT_MODELS: Record<Exclude<ModelProvider, 'vfa-free'>, string> = {
-  openai: 'gpt-5.6-luna',
-  anthropic: 'claude-sonnet-5',
   openrouter: 'openrouter/free'
 };
 
 const FREE: ModelSettings = { provider: 'vfa-free', model: '', apiKey: '' };
 let active: ModelSettings = { ...FREE };
+
+export function isFreeOpenRouterModel(model: string): boolean {
+  const value = model.trim().toLowerCase();
+  return value === 'openrouter/free' || value.endsWith(':free');
+}
 
 export function getModelSettings(): ModelSettings {
   return { ...active };
@@ -33,9 +34,10 @@ export function setModelSettings(next: ModelSettings): ModelSettings {
   }
   const model = next.model.trim();
   const apiKey = next.apiKey.trim();
-  if (!model) throw new Error('Choose a model.');
-  if (!apiKey) throw new Error('Enter your API key.');
-  active = { provider: next.provider, model, apiKey };
+  if (!model) throw new Error('Choose a free OpenRouter model.');
+  if (!isFreeOpenRouterModel(model)) throw new Error('Only OpenRouter free routes are allowed. Use openrouter/free or a model ending in :free.');
+  if (!apiKey) throw new Error('Enter your OpenRouter API key.');
+  active = { provider: 'openrouter', model, apiKey };
   return getModelSettings();
 }
 
@@ -47,7 +49,7 @@ export function resetModelSettings(): ModelSettings {
 export function modelRequestConfig(settings = active) {
   if (settings.provider === 'vfa-free') return { provider: 'vfa-free' as const };
   return {
-    provider: settings.provider,
+    provider: 'openrouter' as const,
     model: settings.model,
     apiKey: settings.apiKey
   };
@@ -55,5 +57,5 @@ export function modelRequestConfig(settings = active) {
 
 export function providerSummary(settings = active) {
   if (settings.provider === 'vfa-free') return 'VFA Free · OpenRouter';
-  return `${PROVIDER_LABELS[settings.provider]} · ${settings.model || 'model not set'}`;
+  return `OpenRouter Free · ${settings.model || 'model not set'}`;
 }
