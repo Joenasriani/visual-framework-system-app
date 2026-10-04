@@ -159,3 +159,69 @@ export async function listRuns(frameworkId: string): Promise<FrameworkRun[]> {
   const items = await requestValue(index.getAll(frameworkId)) as FrameworkRun[];
   return items.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 }
+
+
+export interface FrameworkBackup {
+  format: 'visual-framework-backup';
+  version: 1;
+  exportedAt: string;
+  activeFrameworkId: string;
+  frameworks: FrameworkDocument[];
+  runs: FrameworkRun[];
+}
+
+export async function exportBackup(): Promise<FrameworkBackup> {
+  const db = await openDatabase();
+  const [activeFrameworkId, frameworks, runs] = await Promise.all([
+    readActiveId(db),
+    requestValue(db.transaction(FRAMEWORKS, 'readonly').objectStore(FRAMEWORKS).getAll()) as Promise<FrameworkDocument[]>,
+    requestValue(db.transaction(RUNS, 'readonly').objectStore(RUNS).getAll()) as Promise<FrameworkRun[]>
+  ]);
+  return {
+    format: 'visual-framework-backup',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    activeFrameworkId,
+    frameworks: frameworks.map(normalizeFramework),
+    runs
+  };
+}
+
+export async function importBackup(value: unknown): Promise<{ activeFrameworkId: string; frameworkCount: number; runCount: number }> {
+  const backup = value as Partial<FrameworkBackup> | null;
+  if (!backup || backup.format !== 'visual-framework-backup' || backup.version !== 1) {
+    throw new Error('This is not a supported Visual Framework backup.');
+  }
+  if (!Array.isArray(backup.frameworks) || !backup.frameworks.length || !Array.isArray(backup.runs)) {
+    throw new Error('The backup does not contain valid maps and runs.');
+  }
+
+  const frameworks = backup.frameworks.map(item => {
+    if (!item || typeof item.id !== 'string' || typeof item.name !== 'string' || !Array.isArray(item.frames) || !Array.isArray(item.connections)) {
+      throw new Error('The backup contains an invalid map.');
+    }
+    return normalizeFramework(item);
+  });
+  const frameworkIds = new Set(frameworks.map(item => item.id));
+  const runs = backup.runs.filter((item): item is FrameworkRun =>
+    Boolean(item && typeof item.id === 'string' && typeof item.frameworkId === 'string' && frameworkIds.has(item.frameworkId))
+  );
+  const activeFrameworkId = typeof backup.activeFrameworkId === 'string' && frameworkIds.has(backup.activeFrameworkId)
+    ? backup.activeFrameworkId
+    : frameworks[0].id;
+
+  const db = await openDatabase();
+  const tx = db.transaction([FRAMEWORKS, RUNS, META], 'readwrite');
+  const frameworkStore = tx.objectStore(FRAMEWORKS);
+  const runStore = tx.objectStore(RUNS);
+  for (const framework of frameworks) frameworkStore.put(framework);
+  for (const run of runs) runStore.put(run);
+  tx.objectStore(META).put(activeFrameworkId, ACTIVE_KEY);
+  await new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? new Error('Backup import was aborted.'));
+  });
+
+  return { activeFrameworkId, frameworkCount: frameworks.length, runCount: runs.length };
+}
