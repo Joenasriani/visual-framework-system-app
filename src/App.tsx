@@ -1768,7 +1768,7 @@ export default function App() {
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
       setActionError(null);
     } catch {
       setActionError('The local backup could not be created. Keep this tab open and try again before closing it.');
@@ -1779,9 +1779,15 @@ export default function App() {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setActionError('That backup is larger than 10 MB and was not imported.');
+      return;
+    }
     const approved = window.confirm('Import this Visual Framework backup? Existing maps are preserved unless the backup contains the same map ID, in which case that saved version is restored.');
     if (!approved) return;
     try {
+      if (persistTimer.current) window.clearTimeout(persistTimer.current);
+      await saveFramework(frameworkRef.current);
       const parsed = JSON.parse(await file.text());
       const restored = await importBackup(parsed);
       const next = await loadFramework(restored.activeFrameworkId);
