@@ -2,6 +2,7 @@ import handler from '../api/model.js';
 
 const originalFetch = globalThis.fetch;
 const originalKey = process.env.FW_API;
+const originalModel = process.env.FW_MODEL;
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 
 function jsonResponse(data, status = 200) {
@@ -11,7 +12,7 @@ function jsonResponse(data, status = 200) {
   });
 }
 
-async function invoke(body, upstream) {
+async function invoke(body, upstream, headers = {}) {
   let captured = null;
   globalThis.fetch = async (url, options = {}) => {
     captured = {
@@ -27,7 +28,12 @@ async function invoke(body, upstream) {
   const req = {
     method: 'POST',
     body,
-    headers: { host: 'localhost:4173', 'x-forwarded-proto': 'http' }
+    headers: {
+      host: 'localhost:4173',
+      'x-forwarded-proto': 'http',
+      'x-forwarded-for': `test-${Math.random()}`,
+      ...headers
+    }
   };
   const res = {
     setHeader() {},
@@ -40,6 +46,7 @@ async function invoke(body, upstream) {
 
 try {
   process.env.FW_API = 'server-free-secret';
+  delete process.env.FW_MODEL;
 
   const free = await invoke(
     { title: 'Free', instruction: 'Answer.', input: 'x', provider: 'vfa-free', apiKey: 'must-be-ignored', model: 'must-be-ignored' },
@@ -53,55 +60,42 @@ try {
   assert(free.statusCode === 200 && free.payload.output === 'FREE OK', 'VFA Free response failed');
   assert(JSON.stringify(free.payload).includes('server-free-secret') === false, 'Server key leaked in response');
 
-  const openai = await invoke(
-    { title: 'OpenAI', instruction: 'Answer.', input: 'x', provider: 'openai', apiKey: 'openai-user-secret', model: 'gpt-5.6-luna' },
-    captured => {
-      assert(captured.url === 'https://api.openai.com/v1/responses', 'OpenAI must use Responses API');
-      assert(captured.headers.Authorization === 'Bearer openai-user-secret', 'OpenAI user key not forwarded correctly');
-      assert(captured.body.model === 'gpt-5.6-luna', 'OpenAI model not forwarded');
-      assert(!('apiKey' in captured.body), 'API key must not be placed in provider JSON body');
-      return jsonResponse({ output_text: 'OPENAI OK' });
-    }
-  );
-  assert(openai.payload.provider === 'openai' && openai.payload.model === 'gpt-5.6-luna', 'OpenAI provenance missing');
-  assert(JSON.stringify(openai.payload).includes('openai-user-secret') === false, 'OpenAI key leaked in response');
-
-  const anthropic = await invoke(
-    { title: 'Claude', instruction: 'Answer.', input: 'x', provider: 'anthropic', apiKey: 'claude-user-secret', model: 'claude-sonnet-5' },
-    captured => {
-      assert(captured.url === 'https://api.anthropic.com/v1/messages', 'Claude must use Anthropic Messages API');
-      assert(captured.headers['x-api-key'] === 'claude-user-secret', 'Claude user key not forwarded correctly');
-      assert(captured.headers['anthropic-version'] === '2023-06-01', 'Anthropic API version missing');
-      assert(captured.body.model === 'claude-sonnet-5', 'Claude model not forwarded');
-      return jsonResponse({ content: [{ type: 'text', text: 'CLAUDE OK' }] });
-    }
-  );
-  assert(anthropic.payload.output === 'CLAUDE OK' && anthropic.payload.provider === 'anthropic', 'Claude response parsing failed');
-
   const openrouter = await invoke(
     { title: 'OpenRouter', instruction: 'Answer.', input: 'x', provider: 'openrouter', apiKey: 'router-user-secret', model: 'openrouter/free' },
     captured => {
       assert(captured.url === 'https://openrouter.ai/api/v1/chat/completions', 'OpenRouter endpoint incorrect');
       assert(captured.headers.Authorization === 'Bearer router-user-secret', 'OpenRouter user key not forwarded correctly');
       assert(captured.body.model === 'openrouter/free', 'OpenRouter model not forwarded');
-      assert(!('reasoning' in captured.body), 'Personal OpenRouter requests must not force provider-specific reasoning controls');
+      assert(!('reasoning' in captured.body), 'Personal OpenRouter requests must not force managed reasoning controls');
       return jsonResponse({ choices: [{ message: { content: 'ROUTER OK' } }], usage: { cost: 0 } });
     }
   );
-  assert(openrouter.payload.output === 'ROUTER OK' && openrouter.payload.provider === 'openrouter', 'OpenRouter BYOK failed');
+  assert(openrouter.payload.output === 'ROUTER OK' && openrouter.payload.provider === 'openrouter', 'OpenRouter free BYOK failed');
 
-  let calls = 0;
-  const rejected = await invoke(
-    { title: 'Rejected', instruction: 'Answer.', input: 'x', provider: 'openai', apiKey: 'bad-secret', model: 'gpt-5.6-luna' },
-    () => { calls += 1; return jsonResponse({ error: { message: 'bad key' } }, 401); }
+  const paid = await invoke(
+    { title: 'Paid route', instruction: 'Answer.', input: 'x', provider: 'openrouter', apiKey: 'router-user-secret', model: 'openai/gpt-6.1-sol' },
+    () => { throw new Error('Paid route reached upstream'); }
   );
-  assert(calls === 1, 'A rejected personal provider must not silently fall back');
-  assert(rejected.statusCode === 502 && rejected.payload.error === 'YOUR OPENAI API KEY WAS REJECTED', 'Rejected key error is unclear');
-  assert(JSON.stringify(rejected.payload).includes('bad-secret') === false, 'Rejected key leaked in response');
+  assert(paid.statusCode === 400 && paid.payload.error === 'ONLY OPENROUTER FREE ROUTES ARE ALLOWED', 'Paid OpenRouter route was not blocked');
 
-  console.log('MODEL PROVIDER SERVER ROUTING PASSED');
+  const otherProvider = await invoke(
+    { title: 'OpenAI', instruction: 'Answer.', input: 'x', provider: 'openai', apiKey: 'secret', model: 'gpt-6.1-sol' },
+    () => { throw new Error('Disallowed provider reached upstream'); }
+  );
+  assert(otherProvider.statusCode === 400, 'Non-OpenRouter provider was not blocked');
+
+  const crossOrigin = await invoke(
+    { title: 'Cross origin', instruction: 'Answer.', input: 'x', provider: 'vfa-free' },
+    () => { throw new Error('Cross-origin request reached upstream'); },
+    { origin: 'https://example.com' }
+  );
+  assert(crossOrigin.statusCode === 403, 'Cross-origin request was not rejected');
+
+  console.log('FREE-ONLY MODEL PROVIDER SERVER ROUTING PASSED');
 } finally {
   globalThis.fetch = originalFetch;
   if (originalKey === undefined) delete process.env.FW_API;
   else process.env.FW_API = originalKey;
+  if (originalModel === undefined) delete process.env.FW_MODEL;
+  else process.env.FW_MODEL = originalModel;
 }

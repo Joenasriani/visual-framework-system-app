@@ -30,6 +30,8 @@ import type {
   StructuralOperation
 } from './domain/types';
 import {
+  exportBackup,
+  importBackup,
   listFrameworks,
   listRuns,
   loadFramework,
@@ -558,6 +560,7 @@ export default function App() {
   const layerResizeRef = useRef<LayerResizeState | null>(null);
   const panRef = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
   const persistTimer = useRef<number | null>(null);
+  const backupInputRef = useRef<HTMLInputElement | null>(null);
   const clipboardRef = useRef<ClipboardState | null>(null);
   const pastRef = useRef<Array<{ doc: FrameworkDocument; label: string }>>([]);
   const futureRef = useRef<Array<{ doc: FrameworkDocument; label: string }>>([]);
@@ -598,7 +601,13 @@ export default function App() {
   const persist = useCallback((doc = frameworkRef.current, delay = 160) => {
     if (!loaded) return;
     if (persistTimer.current) window.clearTimeout(persistTimer.current);
-    persistTimer.current = window.setTimeout(() => saveFramework(doc).catch(() => undefined), delay);
+    persistTimer.current = window.setTimeout(() => {
+      saveFramework(doc).then(() => {
+        setActionError(current => current?.startsWith('This browser could not save your latest changes') ? null : current);
+      }).catch(() => {
+        setActionError('This browser could not save your latest changes. Keep this tab open and export a backup before closing it.');
+      });
+    }, delay);
   }, [loaded]);
 
   const recordHistory = useCallback((doc: FrameworkDocument, historyLabel: string) => {
@@ -1661,8 +1670,12 @@ export default function App() {
       setStatus(single.status === 'ok' ? 'PASSED' : 'STOPPED');
       setSideMode('runs');
       setPanelOpen(true);
-      await saveRun(single).catch(() => undefined);
-      setRuns(await listRuns(frameworkRef.current.id).catch(() => []));
+      try {
+        await saveRun(single);
+        setRuns(await listRuns(frameworkRef.current.id));
+      } catch {
+        setActionError('The run finished, but this browser could not save the run history.');
+      }
     } catch {
       setStatus('STOPPED');
       setActionError('This item could not finish. Check its content and connections, then try again.');
@@ -1684,8 +1697,12 @@ export default function App() {
       setStatus(final.status === 'ok' ? 'PASSED' : 'STOPPED');
       setSideMode('runs');
       setPanelOpen(true);
-      await saveRun(final).catch(() => undefined);
-      setRuns(await listRuns(frameworkRef.current.id).catch(() => []));
+      try {
+        await saveRun(final);
+        setRuns(await listRuns(frameworkRef.current.id));
+      } catch {
+        setActionError('The run finished, but this browser could not save the run history.');
+      }
     } catch {
       setStatus('STOPPED');
       setActionError('The run could not finish. Your map is still here. Check the connections and try again.');
@@ -1738,6 +1755,60 @@ export default function App() {
     }
   }, [refreshLists]);
 
+  const exportLocalBackup = useCallback(async () => {
+    try {
+      if (persistTimer.current) window.clearTimeout(persistTimer.current);
+      await saveFramework(frameworkRef.current);
+      const backup = await exportBackup();
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `visual-framework-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setActionError(null);
+    } catch {
+      setActionError('The local backup could not be created. Keep this tab open and try again before closing it.');
+    }
+  }, []);
+
+  const importLocalBackup = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setActionError('That backup is larger than 10 MB and was not imported.');
+      return;
+    }
+    const approved = window.confirm('Import this Visual Framework backup? Existing maps are preserved unless the backup contains the same map ID, in which case that saved version is restored.');
+    if (!approved) return;
+    try {
+      if (persistTimer.current) window.clearTimeout(persistTimer.current);
+      await saveFramework(frameworkRef.current);
+      const parsed = JSON.parse(await file.text());
+      const restored = await importBackup(parsed);
+      const next = await loadFramework(restored.activeFrameworkId);
+      frameworkRef.current = next;
+      setFramework(next);
+      setSelectedFrameIds(next.frames[0]?.id ? [next.frames[0].id] : []);
+      setSelectedConnectionId(null);
+      setSelectedLayerId(null);
+      setRun(null);
+      setPanelOpen(false);
+      setScale(1);
+      pastRef.current = [];
+      futureRef.current = [];
+      setHistoryTick(value => value + 1);
+      setActionError(null);
+      await refreshLists(next.id);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'The backup could not be imported.');
+    }
+  }, [refreshLists]);
+
   const beginGuidedConnection = useCallback(() => {
     const source = (selectedFrame?.outputs.length ? selectedFrame : null) ?? frameworkRef.current.frames.find(frame => frame.outputs.length);
     if (!source) return;
@@ -1749,22 +1820,29 @@ export default function App() {
     setStatus('CHOOSE INPUT');
   }, [selectedFrame]);
 
-  const reset = useCallback(() => {
+  const reset = useCallback(async () => {
     if (persistTimer.current) window.clearTimeout(persistTimer.current);
+    const current = frameworkRef.current;
     const seed = createSeedFramework();
-    void saveFramework({ ...frameworkRef.current, id: `saved-${crypto.randomUUID()}`, name: `${frameworkRef.current.name} (saved)` });
-    recordHistory(frameworkRef.current, 'Reset Framework');
-    frameworkRef.current = seed;
-    setFramework(seed);
-    setSelectedFrameIds(['instruction-1']);
-    setSelectedConnectionId(null);
-    setSelectedLayerId(null);
-    setRun(null);
-    setScale(1);
-    setCableMotion(null);
-    setStatus('READY');
-    saveFramework(seed).catch(() => undefined);
-  }, [recordHistory]);
+    try {
+      await saveFramework({ ...current, id: `saved-${crypto.randomUUID()}`, name: `${current.name} (saved)` });
+      await saveFramework(seed);
+      recordHistory(current, 'Reset Framework');
+      frameworkRef.current = seed;
+      setFramework(seed);
+      setSelectedFrameIds(['instruction-1']);
+      setSelectedConnectionId(null);
+      setSelectedLayerId(null);
+      setRun(null);
+      setScale(1);
+      setCableMotion(null);
+      setStatus('READY');
+      setActionError(null);
+      await refreshLists(seed.id);
+    } catch {
+      setActionError('Reset was cancelled because the current map could not be preserved locally. Export a backup before trying again.');
+    }
+  }, [recordHistory, refreshLists]);
 
   const fitView = useCallback(() => {
     const stage = stageRef.current;
@@ -1911,7 +1989,10 @@ export default function App() {
           <button className="text-btn secondary-top-action" onClick={redo} disabled={!futureRef.current.length}>Redo</button>
           <button className="text-btn secondary-top-action advanced-control" onClick={() => openPanel('issues')}>Checks {lintIssues.length + executionIssues.length}</button>
           <button className="text-btn secondary-top-action advanced-control" onClick={() => openPanel('runs')}>Runs {runs.length}</button>
-          <button className="text-btn secondary-top-action advanced-control" onClick={reset} title="Open the original example; preserve a separate copy of the current map">Reset</button>
+          <button className="text-btn secondary-top-action advanced-control" onClick={() => void exportLocalBackup()} title="Download all local maps and runs as JSON">Export backup</button>
+          <button className="text-btn secondary-top-action advanced-control" onClick={() => backupInputRef.current?.click()} title="Restore maps and runs from a Visual Framework JSON backup">Import backup</button>
+          <input ref={backupInputRef} type="file" accept=".json,application/json" hidden onChange={event => void importLocalBackup(event)} />
+          <button className="text-btn secondary-top-action advanced-control" onClick={() => void reset()} title="Open the original example; preserve a separate copy of the current map">Reset</button>
           <button className="text-btn" onClick={() => void createWorkspace(false)} disabled={status === 'RUNNING' || status === 'THINKING'}>New map</button>
           <button className="text-btn" onClick={() => void createWorkspace(true)} disabled={status === 'RUNNING' || status === 'THINKING'}>Example</button>
           <button className="text-btn" aria-expanded={showTools} onClick={() => setShowTools(value => !value)}>{showTools ? 'Fewer tools' : 'More tools'}</button>

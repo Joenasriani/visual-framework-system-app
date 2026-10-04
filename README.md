@@ -1,8 +1,8 @@
 # Visual Framework
 
-MVP baseline: ACCEPTED on September 15, 2026.
+Historical September 15 source baseline: accepted for that build only.
 
-Current status: FINAL MVP 1.0 COMPLETION PASS — beginner-first usability and runtime hardening.
+Current status: MVP 1.0 IMPLEMENTATION COMPLETE / RELEASE ACCEPTANCE OPEN — real first-time human use, live AI, rendered review, and production acceptance remain required.
 
 Visual Framework helps people put ideas on a canvas, connect them, look at them in different ways, and run simple thinking steps while keeping the structure editable and visible.
 
@@ -12,7 +12,9 @@ The September 15 baseline already supports structured roles, status, origin trac
 
 ## Project status
 
-Visual Framework is currently a working prototype. Investment and strategic partnerships are being explored to accelerate its development toward a complete production release.
+Visual Framework is a working MVP implementation under release acceptance. Passing source/build automation does not by itself certify human usability, live AI reliability, or the canonical production deployment. See `MVP_STATUS.md` for the release gates.
+
+Investment and strategic partnerships are being explored to accelerate development toward a complete production release.
 
 ## Architecture
 
@@ -86,14 +88,16 @@ Each operation can run against a Frame, a Selection, a Branch or the complete Fr
 
 See `MVP_STATUS.md` for the historical baseline acceptance, `MVP_BEGINNER_INTERACTION_CONTRACT.md` for the current user-facing MVP contract, and `FRAMEWORK_TASKS.md` for the final completion pass and later roadmap.
 
-## Local data migration
+## Local data and backups
 
 The React application imports the previous `visual-framework-workflow-v1` localStorage structure into IndexedDB when required.
+
+The MVP can export all locally stored maps and Run history as a JSON backup and restore that backup later. Automatic save failures are surfaced to the user instead of being silently ignored.
 
 ## Development
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
@@ -111,18 +115,13 @@ npm run build
 
 ## Acceptance
 
-The repository keeps two production browser acceptance suites:
-
-1. `e2e/live.mjs` verifies the complete user loop.
-2. `e2e/complete.mjs` verifies the remaining contract details including cable compatibility, all structural operations, reversibility, linter navigation and offline PWA behavior.
+The repository keeps production browser acceptance coverage for the complete user loop, detailed graph interactions, model settings, local backup/restore and true offline PWA behavior. Production acceptance also verifies that the canonical deployment reports the exact Git commit being certified before the live suites run.
 
 ## Online model
 
-The online Frame executor reads `FW_API` only inside `api/model.js`.
+The managed online Frame executor reads `FW_API` only inside `api/model.js`. The browser never receives that managed key.
 
-The browser never receives the key.
-
-No paid fallback is configured.
+The MVP accepts only OpenRouter free routes: the managed model must be `openrouter/free` or an explicit model id ending in `:free`, and the same rule is enforced server-side for a user's session-only OpenRouter key. Paid model routes and non-OpenRouter providers are rejected. No paid fallback is configured.
 ## Node graph interaction
 
 The Resolve-style node, cable, and Layer behavior is locked in [NODE_GRAPH_CONTRACT.md](NODE_GRAPH_CONTRACT.md).

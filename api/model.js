@@ -1,12 +1,20 @@
-const FREE_MODEL = process.env.FW_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b:free';
+const DEFAULT_FREE_MODEL = 'nvidia/nemotron-3-ultra-550b-a55b:free';
+const FREE_MODEL = process.env.FW_MODEL || DEFAULT_FREE_MODEL;
 const MAX_INPUT_CHARS = 60000;
 const MAX_KEY_CHARS = 2048;
 const MAX_MODEL_CHARS = 240;
-const PROVIDERS = new Set(['vfa-free', 'openai', 'anthropic', 'openrouter']);
+const RATE_WINDOW_MS = 10 * 60 * 1000;
+const RATE_LIMIT = Math.max(1, Number(process.env.FW_RATE_LIMIT || 120));
+const PROVIDERS = new Set(['vfa-free', 'openrouter']);
 
 export const config = { maxDuration: 60 };
 
 const SYSTEM_PROMPT = 'Execute exactly one Frame in Visual Framework. The Frame order is authoritative. Work only from the supplied input and order. Preserve structural distinctions, alternatives, contradictions, and uncertainty when the order requires them. Do not invent certainty. Do not narrate hidden reasoning. Return only the Frame result in the structure requested by the order.';
+
+const rateBuckets = globalThis.__VFA_RATE_BUCKETS__ instanceof Map
+  ? globalThis.__VFA_RATE_BUCKETS__
+  : new Map();
+globalThis.__VFA_RATE_BUCKETS__ = rateBuckets;
 
 function textOf(value) {
   if (value == null) return '';
@@ -17,6 +25,38 @@ function textOf(value) {
 
 function userPrompt(title, instruction, inputText) {
   return `FRAME: ${textOf(title) || 'Untitled'}\n\nORDER:\n${instruction.trim()}\n\nINPUT:\n${inputText || '(none)'}`;
+}
+
+function isFreeOpenRouterModel(model) {
+  const value = String(model || '').trim().toLowerCase();
+  return value === 'openrouter/free' || value.endsWith(':free');
+}
+
+function sameOrigin(req) {
+  const origin = typeof req.headers?.origin === 'string' ? req.headers.origin : '';
+  if (!origin) return true;
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  if (!host) return false;
+  try { return new URL(origin).host === host; }
+  catch { return false; }
+}
+
+function clientIp(req) {
+  const forwarded = req.headers?.['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.trim()) return forwarded.split(',')[0].trim();
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+function allowRequest(ip) {
+  const now = Date.now();
+  const current = rateBuckets.get(ip);
+  if (!current || now - current.startedAt >= RATE_WINDOW_MS) {
+    rateBuckets.set(ip, { startedAt: now, count: 1 });
+    return true;
+  }
+  if (current.count >= RATE_LIMIT) return false;
+  current.count += 1;
+  return true;
 }
 
 function openAIText(data) {
@@ -30,23 +70,14 @@ function openAIText(data) {
   return parts.join('\n').trim();
 }
 
-function anthropicText(data) {
-  return (Array.isArray(data?.content) ? data.content : [])
-    .filter(item => item?.type === 'text' && typeof item.text === 'string')
-    .map(item => item.text)
-    .join('\n')
-    .trim();
+function providerError(status) {
+  if (status === 401 || status === 403) return 'YOUR OPENROUTER API KEY WAS REJECTED';
+  if (status === 429) return 'YOUR OPENROUTER FREE LIMIT WAS REACHED';
+  if (status === 400 || status === 404 || status === 422) return 'FREE MODEL OR REQUEST REJECTED BY OPENROUTER';
+  return 'OPENROUTER UNAVAILABLE';
 }
 
-function providerError(provider, status) {
-  const label = provider === 'openai' ? 'OPENAI' : provider === 'anthropic' ? 'CLAUDE' : 'OPENROUTER';
-  if (status === 401 || status === 403) return `YOUR ${label} API KEY WAS REJECTED`;
-  if (status === 429) return `YOUR ${label} LIMIT WAS REACHED`;
-  if (status === 400 || status === 404 || status === 422) return `MODEL OR REQUEST REJECTED BY ${label}`;
-  return `${label} UNAVAILABLE`;
-}
-
-async function callOpenRouter({ apiKey, model, referer, prompt, free, signal }) {
+async function callOpenRouter({ apiKey, model, referer, prompt, managed, signal }) {
   const body = {
     model,
     messages: [
@@ -55,7 +86,7 @@ async function callOpenRouter({ apiKey, model, referer, prompt, free, signal }) 
     ],
     max_tokens: 1400
   };
-  if (free) {
+  if (managed) {
     body.reasoning = { effort: 'medium' };
     body.temperature = 0.25;
   }
@@ -78,57 +109,26 @@ async function callOpenRouter({ apiKey, model, referer, prompt, free, signal }) 
   };
 }
 
-async function callOpenAI({ apiKey, model, prompt, signal }) {
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    signal,
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model,
-      instructions: SYSTEM_PROMPT,
-      input: prompt,
-      max_output_tokens: 1400
-    })
-  });
-  const data = await response.json().catch(() => ({}));
-  return { response, data, output: openAIText(data) };
-}
-
-async function callAnthropic({ apiKey, model, prompt, signal }) {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    signal,
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 1400,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: prompt }]
-    })
-  });
-  const data = await response.json().catch(() => ({}));
-  return { response, data, output: anthropicText(data) };
-}
-
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
   if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'POST ONLY' });
+  }
+  if (!sameOrigin(req)) {
+    return res.status(403).json({ error: 'CROSS ORIGIN MODEL REQUEST REJECTED' });
+  }
+  if (!allowRequest(clientIp(req))) {
+    res.setHeader('Retry-After', String(Math.ceil(RATE_WINDOW_MS / 1000)));
+    return res.status(429).json({ error: 'VFA FREE REQUEST LIMIT REACHED' });
   }
 
   const { instruction, input, title } = req.body || {};
   const provider = typeof req.body?.provider === 'string' ? req.body.provider : 'vfa-free';
 
   if (!PROVIDERS.has(provider)) {
-    return res.status(400).json({ error: 'UNKNOWN MODEL PROVIDER' });
+    return res.status(400).json({ error: 'ONLY FREE OPENROUTER PROVIDERS ARE ALLOWED' });
   }
   if (typeof instruction !== 'string' || !instruction.trim()) {
     return res.status(400).json({ error: 'INSTRUCTION MISSING' });
@@ -145,11 +145,17 @@ export default async function handler(req, res) {
     apiKey = process.env.FW_API;
     model = FREE_MODEL;
     if (!apiKey) return res.status(503).json({ error: 'VFA FREE MODEL IS NOT CONFIGURED' });
+    if (!isFreeOpenRouterModel(model)) {
+      return res.status(503).json({ error: 'VFA FREE MODEL CONFIGURATION MUST USE AN OPENROUTER FREE ROUTE' });
+    }
   } else {
     apiKey = typeof req.body?.apiKey === 'string' ? req.body.apiKey.trim() : '';
     model = typeof req.body?.model === 'string' ? req.body.model.trim() : '';
-    if (!apiKey) return res.status(400).json({ error: 'API KEY MISSING' });
-    if (!model) return res.status(400).json({ error: 'MODEL MISSING' });
+    if (!apiKey) return res.status(400).json({ error: 'OPENROUTER API KEY MISSING' });
+    if (!model) return res.status(400).json({ error: 'FREE MODEL MISSING' });
+    if (!isFreeOpenRouterModel(model)) {
+      return res.status(400).json({ error: 'ONLY OPENROUTER FREE ROUTES ARE ALLOWED' });
+    }
     if (apiKey.length > MAX_KEY_CHARS || model.length > MAX_MODEL_CHARS) {
       return res.status(400).json({ error: 'MODEL SETTINGS TOO LARGE' });
     }
@@ -163,21 +169,14 @@ export default async function handler(req, res) {
   const timeout = setTimeout(() => controller.abort(), 55000);
 
   try {
-    let result;
-    if (provider === 'openai') {
-      result = await callOpenAI({ apiKey, model, prompt, signal: controller.signal });
-    } else if (provider === 'anthropic') {
-      result = await callAnthropic({ apiKey, model, prompt, signal: controller.signal });
-    } else {
-      result = await callOpenRouter({
-        apiKey,
-        model,
-        referer,
-        prompt,
-        free: provider === 'vfa-free',
-        signal: controller.signal
-      });
-    }
+    const result = await callOpenRouter({
+      apiKey,
+      model,
+      referer,
+      prompt,
+      managed: provider === 'vfa-free',
+      signal: controller.signal
+    });
 
     if (!result.response.ok) {
       if (provider === 'vfa-free') {
@@ -186,7 +185,7 @@ export default async function handler(req, res) {
         return res.status(502).json({ error: 'VFA FREE MODEL UNAVAILABLE' });
       }
       const status = result.response.status === 429 ? 429 : 502;
-      return res.status(status).json({ error: providerError(provider, result.response.status) });
+      return res.status(status).json({ error: providerError(result.response.status) });
     }
 
     if (!result.output) {
@@ -197,11 +196,11 @@ export default async function handler(req, res) {
       output: result.output,
       provider,
       model,
-      cost: provider === 'openrouter' || provider === 'vfa-free' ? result.data?.usage?.cost ?? null : null
+      cost: result.data?.usage?.cost ?? null
     });
   } catch (error) {
     if (error?.name === 'AbortError') return res.status(504).json({ error: 'MODEL TIMEOUT' });
-    return res.status(502).json({ error: provider === 'vfa-free' ? 'VFA FREE MODEL UNAVAILABLE' : providerError(provider, 503) });
+    return res.status(502).json({ error: provider === 'vfa-free' ? 'VFA FREE MODEL UNAVAILABLE' : providerError(503) });
   } finally {
     clearTimeout(timeout);
   }

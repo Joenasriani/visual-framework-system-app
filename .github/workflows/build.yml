@@ -14,12 +14,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run build
       - name: Test model provider server routing
         run: node e2e/provider-api.mjs
-      - run: npm install --no-save playwright
       - run: npx playwright install --with-deps chromium
       - name: Start built app locally
         run: |
@@ -39,6 +38,7 @@ jobs:
           node e2e/model-settings.mjs
           node e2e/soft-motion.mjs
           node e2e/complete.mjs
+          node e2e/backup.mjs
         env:
           LIVE_URL: http://127.0.0.1:4173
 
