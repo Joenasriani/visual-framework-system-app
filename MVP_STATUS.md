@@ -2,11 +2,11 @@
 
 Status: HUMAN-FIRST REVIEW / NOT RELEASED / HUMAN ACCEPTANCE PENDING
 
-Updated: September 27, 2026
+Updated: October 4, 2026
 
 ## Current scope
 
-The current work improves first-use guidance and visual consistency over the existing MVP. It does not add an advanced graph runtime. The review branch is `mvp-human-first-2026-09-27`.
+The current MVP combines the beginner-first interaction pass with release-path hardening from the October 4 audit. It does not add the advanced graph/runtime roadmap. Source correctness, local durability, free-model enforcement, deployment identity, and production acceptance wiring are part of this hardening; real human usability and live production AI remain separate release gates.
 
 The interface must let a person add and edit items, connect them, distinguish run cables from descriptive relationships, request a thinking suggestion, review it before applying, run the map, and read the actual result. Use plain words and one neutral workstation surface.
 
@@ -26,7 +26,7 @@ MVP 1.0 must not be marked frozen, launch-ready or fully accepted until all five
 
 ## Preserved scope boundary
 
-The VFS/advanced-runtime path remains frozen and separate. Do not merge advanced runtime, recursive chains, counterfactual architecture, thought compositing or selective recomputation into this pass. Preserve the existing frozen branches and all history.
+The VFS/advanced-runtime path remains frozen and separate. Do not merge advanced runtime, recursive chains, counterfactual execution, thought compositing or selective recomputation into MVP 1.0. Backward-compatible schema reservations may exist where they prevent future migration pain; they are not implemented runtime features. Preserve the existing frozen branches and all history.
 
 `FRAMEWORK_TASKS.md` is a preserved future backlog, not a requirement to complete advanced features before this MVP. The current release boundary in this file supersedes its historical Final MVP Completion Pass wording.
 
