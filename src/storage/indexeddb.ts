@@ -44,6 +44,7 @@ function normalizeFramework(input: FrameworkDocument): FrameworkDocument {
   const createdAt = input.updatedAt || new Date().toISOString();
   return {
     ...input,
+    schemaVersion: input.schemaVersion ?? 1,
     goal: input.goal ?? 'understand',
     version: input.version ?? 1,
     proposals: input.proposals ?? [],
