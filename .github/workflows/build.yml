@@ -38,6 +38,7 @@ jobs:
           node e2e/model-settings.mjs
           node e2e/soft-motion.mjs
           node e2e/complete.mjs
+          node e2e/backup.mjs
         env:
           LIVE_URL: http://127.0.0.1:4173
 
