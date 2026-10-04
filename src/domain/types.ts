@@ -51,6 +51,32 @@ export interface Provenance {
   modelId?: string;
 }
 
+export interface ContextScope {
+  included?: string[];
+  hidden?: string[];
+  note?: string;
+}
+
+export type InstructionFragmentState = 'active' | 'disabled' | 'masked' | 'subtracted' | 'replaced';
+
+export interface InstructionFragment {
+  id: string;
+  text: string;
+  state: InstructionFragmentState;
+  replacement?: string;
+  changedBy?: ProvenanceOrigin;
+}
+
+export interface GeneratedClaim {
+  id: string;
+  text: string;
+  evidenceRefs?: string[];
+  contradictionRefs?: string[];
+  boundaryConditions?: string[];
+}
+
+export type ExecutionMode = 'sequential' | 'parallel' | 'conditional' | 'manual' | 'iterative';
+
 export interface Port {
   id: string;
   name: string;
@@ -76,6 +102,13 @@ export interface Frame {
   parentId?: string;
   collapsed?: boolean;
   layerId?: string;
+  executionRole?: string;
+  assumptions?: string[];
+  contextScope?: ContextScope;
+  sourceRefs?: string[];
+  generatedClaims?: GeneratedClaim[];
+  instructionFragments?: InstructionFragment[];
+  dependencyFingerprint?: string[];
 }
 
 export interface Layer {
@@ -118,6 +151,10 @@ export interface Connection {
   toPort: string;
   kind?: ConnectionKind;
   meaning?: RelationshipMeaning;
+  executionMode?: ExecutionMode;
+  reason?: string;
+  trigger?: string;
+  confidence?: number;
   provenance?: Provenance;
 }
 
@@ -163,6 +200,7 @@ export interface TransformationRecord {
 
 export interface FrameworkDocument {
   id: string;
+  schemaVersion?: number;
   name: string;
   frames: Frame[];
   connections: Connection[];
