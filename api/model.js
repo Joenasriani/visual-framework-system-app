@@ -4,7 +4,7 @@ const MAX_INPUT_CHARS = 60000;
 const MAX_KEY_CHARS = 2048;
 const MAX_MODEL_CHARS = 240;
 const RATE_WINDOW_MS = 10 * 60 * 1000;
-const RATE_LIMIT = Math.max(1, Number(process.env.FW_RATE_LIMIT || 30));
+const RATE_LIMIT = Math.max(1, Number(process.env.FW_RATE_LIMIT || 120));
 const PROVIDERS = new Set(['vfa-free', 'openrouter']);
 
 export const config = { maxDuration: 60 };
