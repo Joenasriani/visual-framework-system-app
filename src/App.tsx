@@ -1670,8 +1670,12 @@ export default function App() {
       setStatus(single.status === 'ok' ? 'PASSED' : 'STOPPED');
       setSideMode('runs');
       setPanelOpen(true);
-      await saveRun(single).catch(() => undefined);
-      setRuns(await listRuns(frameworkRef.current.id).catch(() => []));
+      try {
+        await saveRun(single);
+        setRuns(await listRuns(frameworkRef.current.id));
+      } catch {
+        setActionError('The run finished, but this browser could not save the run history.');
+      }
     } catch {
       setStatus('STOPPED');
       setActionError('This item could not finish. Check its content and connections, then try again.');
@@ -1693,8 +1697,12 @@ export default function App() {
       setStatus(final.status === 'ok' ? 'PASSED' : 'STOPPED');
       setSideMode('runs');
       setPanelOpen(true);
-      await saveRun(final).catch(() => undefined);
-      setRuns(await listRuns(frameworkRef.current.id).catch(() => []));
+      try {
+        await saveRun(final);
+        setRuns(await listRuns(frameworkRef.current.id));
+      } catch {
+        setActionError('The run finished, but this browser could not save the run history.');
+      }
     } catch {
       setStatus('STOPPED');
       setActionError('The run could not finish. Your map is still here. Check the connections and try again.');
