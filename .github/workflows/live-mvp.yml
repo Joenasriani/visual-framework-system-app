@@ -56,3 +56,6 @@ jobs:
       - run: node e2e/complete.mjs
         env:
           LIVE_URL: https://visual-framework-app.vercel.app
+      - run: node e2e/backup.mjs
+        env:
+          LIVE_URL: https://visual-framework-app.vercel.app
