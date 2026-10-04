@@ -1,8 +1,8 @@
 # Visual Framework
 
-MVP baseline: ACCEPTED on September 15, 2026.
+Historical September 15 source baseline: accepted for that build only.
 
-Current status: FINAL MVP 1.0 COMPLETION PASS — beginner-first usability and runtime hardening.
+Current status: MVP 1.0 IMPLEMENTATION COMPLETE / RELEASE ACCEPTANCE OPEN — real first-time human use, live AI, rendered review, and production acceptance remain required.
 
 Visual Framework helps people put ideas on a canvas, connect them, look at them in different ways, and run simple thinking steps while keeping the structure editable and visible.
 
@@ -12,7 +12,9 @@ The September 15 baseline already supports structured roles, status, origin trac
 
 ## Project status
 
-Visual Framework is currently a working prototype. Investment and strategic partnerships are being explored to accelerate its development toward a complete production release.
+Visual Framework is a working MVP implementation under release acceptance. Passing source/build automation does not by itself certify human usability, live AI reliability, or the canonical production deployment. See `MVP_STATUS.md` for the release gates.
+
+Investment and strategic partnerships are being explored to accelerate development toward a complete production release.
 
 ## Architecture
 
